@@ -14,7 +14,9 @@ static class Fork
 {
     public static readonly bool On = true;
     public const string Repo = "github.com/roblesleo/Hookshot";
-    public static string Home => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HookshotFSR");
+    // (LOCALAPPDATA as the environment has it, as the worker reads it: a test can point both at an empty folder)
+    public static string Home => Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA") is { Length: > 0 } l ? l
+        : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HookshotFSR");
     /// The fork's code with the tools linked in (the worker's output): what Tools.Find() builds from
     public static string Src => Path.Combine(Home, "src");
     public static string FfxSdk => Path.Combine(Home, "ffx-sdk");
@@ -47,6 +49,7 @@ static class Fork
                 StandardOutputEncoding = System.Text.Encoding.UTF8,
                 StandardErrorEncoding = System.Text.Encoding.UTF8,
             };
+            si.Environment.Remove("PSModulePath");   // (Windows PowerShell's own modules, not PowerShell 7's when started from it)
             foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", worker, "-Nup", "none", "-Out", "none", "-ToolsOnly" })
                 si.ArgumentList.Add(a);
             if (dlss) si.ArgumentList.Add("-Dlss");

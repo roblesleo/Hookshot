@@ -477,6 +477,28 @@ public partial class MainWindow : Window
         if (checking) return;
         checking = true;
         var tools = Tools.Find();
+        // (fork: the version check runs on the tools, which a first start does not have yet: they are fetched first)
+        if (Fork.On && tools == null && dumps.Count > 0)
+        {
+            BuildButton.IsEnabled = false;
+            FilesSub.Text = "Getting the tools and code…";
+            forkPrep = new CancellationTokenSource();
+            string? why = null;
+            for (var attempt = 0; attempt < 3; attempt++)   // (GitHub cuts downloads off now and then: what came whole is kept)
+            {
+                why = await Fork.Prepare(false, line => Dispatcher.BeginInvoke(() => FilesSub.Text = line), forkPrep.Token);
+                if (why == null || why == "Cancelled") break;
+            }
+            forkPrep = null;
+            tools = Tools.Find();
+            if (why != null || tools == null)
+            {
+                checking = false;
+                ForkDownloadFailed(why ?? "The Hookshot tools were not found.");
+                return;
+            }
+            RefreshMode();
+        }
         while (tools != null && dumps.FirstOrDefault(d => !checks.ContainsKey(d.Path)) is { } d)
         {
             checks[d.Path] = null;
@@ -1129,6 +1151,17 @@ public partial class MainWindow : Window
 
     bool problemIsTools;
 
+    /// (fork) The tools could not be downloaded: Repair tries again (not the antivirus page: nothing was removed)
+    void ForkDownloadFailed(string why)
+    {
+        ShowProblem(why, tools: true);
+        ProblemTitle.Text = "The build tools could not be downloaded";
+        ProblemHead.Text = "The connection dropped while downloading";
+        ProblemText.Text = why;
+        ProblemSteps.Children.Clear();
+        ProblemSteps.Children.Add(new TextBlock { Text = "Press Repair to try again: what was already downloaded is kept.", Style = (Style)FindResource("Note"), FontSize = 14, Margin = new Thickness(0, 6, 0, 0) });
+    }
+
     void ShowProblem(string why, bool tools)
     {
         lastFailure = why;
@@ -1194,9 +1227,13 @@ public partial class MainWindow : Window
         {
             foreach (var d in Directory.Exists(Fork.Home) ? Directory.GetDirectories(Fork.Home, "tools-*") : Array.Empty<string>())
                 try { File.Delete(System.IO.Path.Combine(d, ".ready")); } catch (Exception) { }
-            MessageBox.Show(this, "Press Build again: Hookshot downloads its tools again and checks each one.", "Hookshot");
+            // (the code folder's link to the tools' Python undone (only the link: Directory.Delete of a junction leaves its
+            // target), so the tools are prepared again)
+            try { Directory.Delete(System.IO.Path.Combine(Fork.Src, "python")); } catch (Exception) { }
+            checks.Clear();
             ShowPage(FilesPage);
             RefreshMode();
+            CheckAll();   // (the tools fetched again now, each part checked; then the game files' versions)
             return;
         }
         var setup = System.IO.Path.Combine(AppContext.BaseDirectory, "HookshotBuilder-Setup.exe");
