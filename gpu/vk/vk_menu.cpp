@@ -78,11 +78,58 @@ std::string game_language() {
     }();
     return lang;
 }
+/// The game's languages, as nx2/make_game.py LANGUAGES has them (language.txt's codes)
+struct GameLang {
+    const char* code;
+    const char* name;
+};
+constexpr GameLang kGameLangs[] = {
+    {"en-US", "English (US)"}, {"en-GB", "English (UK)"}, {"fr", "French (France)"}, {"fr-CA", "French (Canada)"},
+    {"de", "German"}, {"it", "Italian"}, {"es", "Spanish (Spain)"}, {"es-419", "Spanish (Latin America)"},
+    {"pt-BR", "Portuguese (Brazil)"}, {"nl", "Dutch"}, {"pl", "Polish"}, {"ru", "Russian"}, {"ja", "Japanese"},
+    {"ko", "Korean"}, {"zh-Hans", "Chinese (Simplified)"}, {"zh-Hant", "Chinese (Traditional)"}};
+constexpr int kGameLangCount = sizeof kGameLangs / sizeof kGameLangs[0];
+std::string language_txt() {
+    char exe[MAX_PATH];
+    const DWORD n = game_module_path(exe, MAX_PATH);
+    std::string path(exe, n);
+    return path.substr(0, path.find_last_of("\\/") + 1) + "language.txt";
+}
+/// The Game language row's value for language.txt's code (English (US) when it names none of them)
+int game_lang_index(const std::string& code) {
+    for (int i = 0; i < kGameLangCount; i++)
+        if (code == kGameLangs[i].code) return i;
+    return 0;
+}
+bool game_lang_synced = false;   // (opts.game_lang read from language.txt: restart_init)
+/// language.txt with its code line set to the row's language (its comments kept): the game reads it at the start
+void write_game_language(int index) {
+    const char* code = kGameLangs[std::clamp(index, 0, kGameLangCount - 1)].code;
+    std::vector<std::string> lines;
+    if (FILE* f = fopen(language_txt().c_str(), "r")) {
+        char line[256];
+        while (fgets(line, sizeof line, f)) lines.emplace_back(line);
+        fclose(f);
+    }
+    bool set = false;
+    for (auto& l : lines) {
+        const size_t a = l.find_first_not_of(" \t\r\n");
+        if (set || a == std::string::npos || l[a] == '#') continue;
+        l = std::string(code) + "\n", set = true;
+    }
+    if (!set) lines.push_back(std::string(code) + "\n");
+    if (FILE* f = fopen(language_txt().c_str(), "w")) {
+        for (const auto& l : lines) fputs(l.c_str(), f);
+        fclose(f);
+    }
+}
 /// Portuguese now: the Menu language row (opts.menu_lang: 0 Auto, the game's language; 1 English; 2 Portuguese)
 bool menu_pt_now() {
 #ifdef _WIN32
     if (opts.menu_lang == 2) return true;
     if (opts.menu_lang == 1) return false;
+    // (Auto: the Game language row's, once read; it follows a change there at once, the game itself after a restart)
+    if (game_lang_synced) return std::string(kGameLangs[std::clamp(opts.game_lang, 0, kGameLangCount - 1)].code).rfind("pt", 0) == 0;
     return game_language().rfind("pt", 0) == 0;
 #else
     return false;
@@ -421,6 +468,8 @@ const char* hn_menu_lang(int v, int variant) {
     if (variant > 0) return nullptr;
     return t[std::clamp(v, 0, 2)];
 }
+/// The Game language row (opts.game_lang): language.txt's code, written when it changes; the game reads it at the start
+const char* tx_game_lang(int v) { return kGameLangs[std::clamp(v, 0, kGameLangCount - 1)].name; }
 const char* tx_percent(int v) {
     static char b[8];
     snprintf(b, sizeof b, "%d%%", v);
@@ -751,6 +800,8 @@ Row rows[] = {
     {TAB_GAMEPLAY, "Microphone", &opts.mic, 0, 2 + kMaxMics, 1, tx_mic,
      "What the ocarina hears when the game's microphone option is on (playing an instrument, or humming).", hn_mic, false,
      true},
+    {TAB_GAMEPLAY, "Game language", &opts.game_lang, 0, kGameLangCount - 1, 1, tx_game_lang,
+     "The game's own language, its text. Applies after a restart.", nullptr, true, true},   // (leo-local: language.txt)
     {TAB_GAMEPLAY, "Menu language", &opts.menu_lang, 0, 2, 1, tx_menu_lang, "The language of this menu.", hn_menu_lang, false,
      true},   // (leo-local)
 
@@ -901,6 +952,7 @@ void restart_init() {
     static bool done = false;
     if (done) return;
     done = true;
+    opts.game_lang = game_lang_index(game_language()), game_lang_synced = true;   // (leo-local: language.txt, not the ini)
     for (int i = 0; i < kRows; i++) {
         restart_slot[i] = rows[i].restart && rows[i].value ? restart_state.add(*rows[i].value) : -1;
         if (restart_slot[i] >= 0) restart_names[restart_slot[i]] = tr(rows[i].name);   // (leo-local: tr, the menu's language)
@@ -1113,7 +1165,7 @@ void save() {
     }
     if (FILE* f = fopen(ini_path().c_str(), "w")) {
         for (const Row& r : rows)
-            if (r.value) fprintf(f, "%s=%d\n", ini_key(r), *r.value);
+            if (r.value && r.value != &opts.game_lang) fprintf(f, "%s=%d\n", ini_key(r), *r.value);
         if (!mic_want.empty()) fprintf(f, "microphone_device=%s\n", mic_want.c_str());   // (hookshot: also while it is unplugged)
         // (2: game_speed below 2 was only ever the old default, see menu_init; 3: the mouse's buttons are bindings, see
         // host/nn_hid.c binds_load)
@@ -1150,6 +1202,7 @@ void set_row(Row& r, int v, int dir, bool keep = true) {
         apply_preset(*r.value);
     } else {
         *r.value = v > r.hi ? r.lo : v < r.lo ? r.hi : v;
+        if (r.value == &opts.game_lang) write_game_language(*r.value);   // (leo-local)
         // (another Upscaler: the Render resolution moves to the nearest of its steps, DLSS's modes or the game's)
         if (r.value == &opts.dlss) opts.resolution = ur::snap(upscaler(), opts.resolution);
         if (!r.preset_exempt) {   // (the controls, the window and the counter are not the preset's)
@@ -1893,7 +1946,7 @@ void menu_init() {
             if (!eq) continue;
             *eq = 0;
             for (Row& r : rows) {
-                if (!r.value || strcmp(line, ini_key(r))) continue;
+                if (!r.value || r.value == &opts.game_lang || strcmp(line, ini_key(r))) continue;
                 const int v = atoi(eq + 1);
                 *r.value = r.value == &opts.output_res ? output_choice(v) : std::min(std::max(v, r.lo), r.hi);
             }

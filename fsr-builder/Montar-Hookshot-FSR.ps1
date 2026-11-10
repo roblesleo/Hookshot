@@ -91,8 +91,15 @@ $y += 40
 Add-Label 'Idioma do jogo:' $y | Out-Null
 $lang = New-Object Windows.Forms.ComboBox
 $lang.DropDownStyle = 'DropDownList'
-$lang.Location = New-Object Drawing.Point(140, ($y - 3)); $lang.Size = New-Object Drawing.Size(120, 28)
-foreach ($c in @('pt-BR', 'en-US', 'es-419', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP')) { [void]$lang.Items.Add($c) }
+$lang.Location = New-Object Drawing.Point(140, ($y - 3)); $lang.Size = New-Object Drawing.Size(300, 28)
+# (the game's languages, as nx2/make_game.py LANGUAGES has them: code and name)
+$Languages = @(
+    @('pt-BR', 'Português (Brasil)'), @('en-US', 'Inglês (EUA)'), @('en-GB', 'Inglês (Reino Unido)'),
+    @('es-419', 'Espanhol (América Latina)'), @('es', 'Espanhol (Espanha)'), @('fr', 'Francês (França)'),
+    @('fr-CA', 'Francês (Canadá)'), @('de', 'Alemão'), @('it', 'Italiano'), @('nl', 'Holandês'), @('pl', 'Polonês'),
+    @('ru', 'Russo'), @('ja', 'Japonês'), @('ko', 'Coreano'), @('zh-Hans', 'Chinês (simplificado)'),
+    @('zh-Hant', 'Chinês (tradicional)'))
+foreach ($l in $Languages) { [void]$lang.Items.Add($l[1] + '  (' + $l[0] + ')') }
 $lang.SelectedIndex = 0
 $form.Controls.Add($lang)
 
@@ -224,7 +231,7 @@ $go.Add_Click({
         $env:WGPU_NATIVE = Join-Path $tools 'wgpu-native'
         $env:HOOKSHOT_MINGW = Join-Path $tools 'llvm-mingw'
         $env:HOOKSHOT_FFX_SDK = Join-Path $Home2 'ffx-sdk'
-        $margs = @('-I', 'nx2\make_game.py', '--nup', $nup.Text, '--out', $out.Text, '--language', $lang.SelectedItem,
+        $margs = @('-I', 'nx2\make_game.py', '--nup', $nup.Text, '--out', $out.Text, '--language', $Languages[$lang.SelectedIndex][0],
                   '--work', (Join-Path $Home2 'work'), '--fetch-ffx-sdk')
         if ($dlss.Checked) {
             $env:HOOKSHOT_NGX_SDK = Join-Path $Home2 'ngx-sdk'
