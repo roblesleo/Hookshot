@@ -159,7 +159,7 @@
               <TextBlock x:Name="ToolsNote" Grid.Column="1" Style="{StaticResource Note}" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
             </Grid>
             <StackPanel Grid.Column="2">
-              <TextBlock x:Name="WorkerLabel" Style="{StaticResource Label}" Text="BUILD WORKERS"/>
+              <TextBlock x:Name="WorkerLabel" Style="{StaticResource Label}" Text="BUILD WORKERS" TextWrapping="Wrap"/>
               <ComboBox x:Name="WorkerBox" Style="{StaticResource Choice}" IsEditable="False"
                         AutomationProperties.Name="Build workers" AutomationProperties.LabeledBy="{Binding ElementName=WorkerLabel}"
                         ToolTip="Automatic uses available memory and any existing worker override. More workers need more memory and may not be faster.">

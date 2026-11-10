@@ -47,6 +47,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // (fork: the window in the Game language box's language, I18n.cs)
+        I18n.Use(lang.Code);
+        var i18nClock = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        i18nClock.Tick += (_, _) => I18n.Apply(this);
+        i18nClock.Start();
         OutPath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", Fork.On ? "Hookshot-FSR" : "Hookshot");   // (fork: never over the official game)
         LanguageBox.ItemsSource = Strings.All;
         LanguageBox.SelectedItem = lang;
@@ -572,7 +577,7 @@ public partial class MainWindow : Window
 
     void BrowseNup(object sender, RoutedEventArgs e)
     {
-        var d = new OpenFileDialog { Filter = "Game file (*.nup)|*.nup", Title = "Choose your game file" };
+        var d = new OpenFileDialog { Filter = I18n.Tr("Game file (*.nup)|*.nup"), Title = I18n.Tr("Choose your game file") };
         if (d.ShowDialog(this) == true) AddDump(d.FileName, "Chosen");
     }
 
@@ -608,7 +613,7 @@ public partial class MainWindow : Window
 
     static string? PickFolder(string title)
     {
-        var d = new OpenFolderDialog { Title = title };
+        var d = new OpenFolderDialog { Title = I18n.Tr(title) };
         return d.ShowDialog() == true ? d.FolderName : null;
     }
 
@@ -659,6 +664,8 @@ public partial class MainWindow : Window
     {
         if (LanguageBox.SelectedItem is not Language l) return;
         lang = l;
+        I18n.Use(l.Code);
+        I18n.Apply(this, again: true);
         CancelButton.Content = T(S.Cancel);
         BackButton.Content = T(S.Back);
         OpenButton.Content = T(S.OpenFolder);
