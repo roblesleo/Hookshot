@@ -30,11 +30,11 @@ function Say($t) { [Console]::Out.WriteLine($t); [Console]::Out.Flush() }
 function Fail($t) { Say ("@@error " + $t); exit 1 }
 
 function Get-File($url, $path, $sha, $size) {
-    if ((Test-Path $path) -and $sha -and ((Get-FileHash $path -Algorithm SHA256).Hash.ToLower() -eq $sha)) { return }
+    if ((Test-Path -LiteralPath $path) -and $sha -and ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower() -eq $sha)) { return }
     for ($try = 1; $try -le 3; $try++) {
         try {
             Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile ($path + '.part')
-            if ($sha -and ((Get-FileHash ($path + '.part') -Algorithm SHA256).Hash.ToLower() -ne $sha)) {
+            if ($sha -and ((Get-FileHash -LiteralPath ($path + '.part') -Algorithm SHA256).Hash.ToLower() -ne $sha)) {
                 Remove-Item ($path + '.part') -Force
                 throw "o arquivo baixado não é o esperado (SHA-256)"
             }
@@ -70,7 +70,7 @@ try {
     }
     if ($parts.Count -lt $want.Count) { Fail "a lista de ferramentas do Hookshot não tem todas as partes esperadas" }
     $ready = Join-Path $root '.ready'
-    if (-not (Test-Path $ready)) {
+    if (-not (Test-Path -LiteralPath $ready)) {
         $i = 0
         foreach ($p in $parts) {
             $i++
@@ -83,10 +83,10 @@ try {
             New-Item -ItemType Directory -Force $dest | Out-Null
             if ($p.Inner -ne '-') {   # (a zip of another project: its folder renamed into place, as the official setup does)
                 $tmp = Join-Path $Home2 'unzip'
-                if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+                if (Test-Path -LiteralPath $tmp) { Remove-Item $tmp -Recurse -Force }
                 [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)
                 $target = Join-Path $dest $p.Rename
-                if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+                if (Test-Path -LiteralPath $target) { Remove-Item $target -Recurse -Force }
                 Move-Item (Join-Path $tmp $p.Inner) $target
                 Remove-Item $tmp -Recurse -Force
             } else {
@@ -104,7 +104,7 @@ try {
         New-Item -ItemType File -Force $ready | Out-Null
     }
     foreach ($need in @('python\python.exe', 'llvm-mingw\bin\clang.exe', 'cpm', 'wgpu-native', 'third_party', 'work')) {
-        if (-not (Test-Path (Join-Path $tools $need))) { Fail ("as ferramentas baixadas não têm " + $need) }
+        if (-not (Test-Path -LiteralPath (Join-Path $tools $need))) { Fail ("as ferramentas baixadas não têm " + $need) }
     }
     Say ("  ferramentas do Hookshot " + $tag + " em " + $tools)
 
@@ -114,9 +114,9 @@ try {
     $src = Join-Path $Home2 'src'
     $zip = Join-Path $Home2 'src.zip'
     Get-File "https://github.com/$Repo/archive/refs/heads/$Branch.zip" $zip $null 0
-    if (Test-Path $src) { Remove-Item $src -Recurse -Force }
+    if (Test-Path -LiteralPath $src) { Remove-Item $src -Recurse -Force }
     $tmp = Join-Path $Home2 'unzip'
-    if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+    if (Test-Path -LiteralPath $tmp) { Remove-Item $tmp -Recurse -Force }
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)
     Move-Item (Get-ChildItem $tmp -Directory | Select-Object -First 1).FullName $src
     Remove-Item $tmp -Recurse -Force
@@ -125,7 +125,7 @@ try {
     Get-ChildItem $tp -Recurse -File -Include *.dll, *.exe, *.lib, *.sha1 | ForEach-Object {
         $dst = Join-Path (Join-Path $src 'third_party') $_.FullName.Substring($tp.Length + 1)
         New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
-        if (-not (Test-Path $dst)) { Copy-Item $_.FullName $dst }
+        if (-not (Test-Path -LiteralPath $dst)) { Copy-Item $_.FullName $dst }
     }
     New-Item -ItemType Directory -Force (Join-Path $src 'work') | Out-Null
     Copy-Item (Join-Path $tools 'work\*') (Join-Path $src 'work') -Recurse -Force
