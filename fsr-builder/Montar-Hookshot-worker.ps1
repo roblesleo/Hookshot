@@ -50,7 +50,8 @@ function Get-File($url, $path, $sha, $size) {
 try {
     # ---- 1. the official builder's tools ----
     Say "@@stage Baixando as ferramentas do Hookshot Builder oficial"
-    $list = (Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/NotRexed/Hookshot/releases/latest/download/hookshot-setup.txt').Content
+    $raw = (Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/NotRexed/Hookshot/releases/latest/download/hookshot-setup.txt').Content
+    $list = if ($raw -is [byte[]]) { [Text.Encoding]::UTF8.GetString($raw) } else { [string]$raw }   # (served as bytes)
     $tag = (($list -split "`n") | Where-Object { $_ -like 'tag *' } | Select-Object -First 1) -replace '^tag\s+', ''
     $tag = $tag.Trim()
     if (-not $tag) { Fail "a lista de ferramentas do Hookshot não pôde ser lida" }
@@ -75,7 +76,7 @@ try {
             $i++
             $name = Split-Path $p.Url -Leaf
             Say ("  " + $name + " (" + [math]::Round($p.Size / 1MB) + " MB)")
-            Say ("@@progress " + [string]([math]::Round(0.02 + 0.10 * $i / $parts.Count, 3)).Replace(',', '.'))
+            Say ("@@progress " + ([string][math]::Round(0.02 + 0.10 * $i / $parts.Count, 3)).Replace(',', '.'))
             $zip = Join-Path $dl $name
             Get-File $p.Url $zip $p.Sha $p.Size
             $dest = if ($p.Dest -eq '.') { $root } else { Join-Path $root $p.Dest }
@@ -147,7 +148,7 @@ try {
     Set-Location $src
     & (Join-Path $tools 'python\python.exe') @a 2>&1 | ForEach-Object {
         $l = [string]$_
-        if ($l -match '^@@progress ([0-9.]+)') { $l = "@@progress " + [string]([math]::Round(0.15 + 0.85 * [double]$Matches[1], 3)).Replace(',', '.') }
+        if ($l -match '^@@progress ([0-9.]+)') { $l = "@@progress " + ([string][math]::Round(0.15 + 0.85 * [double]$Matches[1], 3)).Replace(',', '.') }
         Say $l
     }
     if ($LASTEXITCODE -ne 0) { Fail ("a montagem parou (código " + $LASTEXITCODE + ")") }
