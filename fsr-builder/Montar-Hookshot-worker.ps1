@@ -31,12 +31,18 @@ New-Item -ItemType Directory -Force $Home2 | Out-Null
 function Say($t) { [Console]::Out.WriteLine($t); [Console]::Out.Flush() }
 function Fail($t) { Say ("@@error " + $t); exit 1 }
 
+# (.NET's own SHA-256: Get-FileHash is in a module a PowerShell started from PowerShell 7 may not find)
+function Sha256($p) {
+    $f = [IO.File]::OpenRead($p)
+    try { return ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($f)) -replace '-', '').ToLower() } finally { $f.Dispose() }
+}
+
 function Get-File($url, $path, $sha, $size) {
-    if ((Test-Path -LiteralPath $path) -and $sha -and ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower() -eq $sha)) { return }
+    if ((Test-Path -LiteralPath $path) -and $sha -and ((Sha256 $path) -eq $sha)) { return }
     for ($try = 1; $try -le 3; $try++) {
         try {
             Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile ($path + '.part')
-            if ($sha -and ((Get-FileHash -LiteralPath ($path + '.part') -Algorithm SHA256).Hash.ToLower() -ne $sha)) {
+            if ($sha -and ((Sha256 ($path + '.part')) -ne $sha)) {
                 Remove-Item ($path + '.part') -Force
                 throw "o arquivo baixado não é o esperado (SHA-256)"
             }
