@@ -15,7 +15,9 @@ struct Options {
     int upscale = 0;      // to the window (Window scaling filter, saved as upscaling): 0 off (the plain copy), 1 Catmull-Rom, 2 Lanczos
     int reflex = 0;       // NVIDIA Reflex: 0 off, 1 on, 2 on + boost (vk_reflex.cpp; NVIDIA GPUs with VK_NV_low_latency2)
     int dlss = 0;         // the Upscaler: 0 the game's own network, 1 NVIDIA DLSS, 2 NVIDIA DLAA (vk_dlss.cpp; a build with NVIDIA's
-                          // SDK only). Saved as dlss
+                          // SDK only), 3 AMD FSR, 4 AMD FSR Native AA (vk_ffx.cpp; Windows, with AMD's runtime). Saved as dlss
+    int fsr_model = 0;    // FSR's version and model: 0 AMD's choice, 1 FSR 3.1, 2 FSR 4 FP8, 3 INT8, 4 INT8 RDNA2, 5 INT8 Lite
+                          // (vk_ffx.h). RX_VK_FSR_MODEL over it
     int dlss_model = 0;   // DLSS's network, by its preset: 0 K (transformer), 1 M, 2 L (second-generation transformer), 3 NVIDIA's
                           // default (upscaler_rows.h model_preset; vk_dlss.cpp). RX_VK_DLSS_PRESET over it
     int sharpness = 0;    // 0 to 100
