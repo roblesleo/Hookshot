@@ -1,3 +1,10 @@
+> [!NOTE]
+> **This fork** adds AMD FSR 4 / FSR 3.1 to the Upscaler row, a Portuguese in-game menu and a small build window
+> (`fsr-builder/`). Everything else is [Hookshot](https://github.com/NotRexed/Hookshot).
+>
+> 🇧🇷 **Em português:** veja o **[LEIA-ME-FSR.md](LEIA-ME-FSR.md)**: como montar o jogo com FSR, o que é cada opção e o
+> menu em português.
+
 <h1 align="center">
   <br>
   <a>
