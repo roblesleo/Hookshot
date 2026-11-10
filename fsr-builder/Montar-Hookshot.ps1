@@ -17,9 +17,10 @@ $Worker = Join-Path $PSScriptRoot 'Montar-Hookshot-worker.ps1'
 function Find-Nups {
     $found = @()
     foreach ($d in @("$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop", "$env:USERPROFILE\Documents")) {
-        if (Test-Path $d) { $found += Get-ChildItem $d -Filter *.nup -File -ErrorAction SilentlyContinue }
+        # (-Filter *.nup also matches .nupkg, as Windows' own filter does: the extension is checked exactly)
+        if (Test-Path $d) { $found += Get-ChildItem $d -Filter *.nup -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -ieq '.nup' } }
     }
-    return $found
+    return $found | Sort-Object LastWriteTime -Descending
 }
 
 $form = New-Object Windows.Forms.Form
