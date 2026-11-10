@@ -59,7 +59,9 @@ static class Finder
         return found.OrderByDescending(d => d.Modified).ToList();
     }
 
-    public static string Ago(DateTime t)
+    public static string Ago(DateTime t) => I18n.Tr(AgoEn(t));   // (fork: in the window's language)
+
+    static string AgoEn(DateTime t)
     {
         var d = DateTime.Now - t;
         if (d.TotalDays < 1 && t.Date == DateTime.Today) return "modified today";

@@ -34,6 +34,7 @@
   <!-- (fork) the worker that fetches the tools, the fork's code and AMD's and NVIDIA's files before a build (Fork.cs) -->
   <ItemGroup>
     <EmbeddedResource Include="..\..\fsr-builder\Montar-Hookshot-worker.ps1" LogicalName="HookshotBuilder.Montar-Hookshot-worker.ps1" />
+    <EmbeddedResource Include="i18n.json" LogicalName="HookshotBuilder.i18n.json" />
   </ItemGroup>
 
 </Project>
