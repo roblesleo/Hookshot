@@ -48,7 +48,15 @@ int env_int(const char* name) {   // (-1: unset)
 
 int wanted_model() {
     static const int env = env_int("RX_VK_FSR_MODEL");
-    return std::clamp(env >= 0 ? env : opts.fsr_model, 0, kModels - 1);
+    if (env >= 0) return std::clamp(env, 0, kModels - 1);
+    switch (opts.fsr_version) {
+    case 1: {   // (FSR 4: AMD's choice of model, or the one chosen)
+        const int m = std::clamp(opts.fsr_model, 0, kFsr4Models - 1);
+        return m == 0 ? MODEL_FSR4_AUTO : MODEL_FP8 + (m - 1);
+    }
+    case 2: return MODEL_FSR3;
+    default: return MODEL_AUTO;
+    }
 }
 
 #ifdef HOOKSHOT_FFX
@@ -83,10 +91,11 @@ bool model_supported(void* self, void* device) {
         if (c.vtable != vt) continue;
         const bool amd = c.amd ? c.amd(self, device) : false;
         const int want = g_model.load(std::memory_order_relaxed);
-        const bool yes = want >= MODEL_FP8 ? want - MODEL_FP8 == i : amd;
+        const bool forced = want >= MODEL_FP8 && want <= MODEL_LITE;
+        const bool yes = forced ? want - MODEL_FP8 == i : amd;
         if (c.said.exchange(yes ? 1 : 0) != (yes ? 1 : 0))
             logf("vk: AMD FSR: FSR 4 model %s: AMD's check says %s; %s", c.label, amd ? "yes" : "no",
-                 want >= MODEL_FP8 ? (yes ? (amd ? "chosen (FSR model row)" : "CHOSEN ANYWAY (FSR model row): it runs on this "
+                 forced ? (yes ? (amd ? "chosen (FSR model row)" : "CHOSEN ANYWAY (FSR model row): it runs on this "
                                                     "GPU by the row's choice")
                                           : "not chosen (FSR model row)")
                                    : "AMD's own choice");
@@ -310,7 +319,8 @@ FfxApiResource resource(const Image& im, bool write) {
 }
 
 const char* model_label(int model) {
-    static const char* const t[kModels] = {"AMD's choice", "FSR 3.1", "FP8", "INT8", "INT8 RDNA2", "INT8 Lite"};
+    static const char* const t[kModels] = {"AMD's choice", "FSR 3.1", "FSR 4 FP8", "FSR 4 INT8", "FSR 4 INT8 RDNA2",
+                                           "FSR 4 INT8 Lite", "FSR 4, AMD's choice of model"};
     return t[std::clamp(model, 0, kModels - 1)];
 }
 
@@ -328,8 +338,15 @@ bool make_context(const Frame& f, const Later& later) {
         later([old, destroy]() mutable { destroy(&old, nullptr); });
         s.ctx = nullptr;
     }
-    g_model = model;
-    const std::vector<Version> v = versions();
+    // (FSR 4 by AMD's choice of model: AMD's own answers first; where it offers no FSR 4 (a GPU it does not list), INT8 Lite)
+    g_model = model == MODEL_FSR4_AUTO ? MODEL_AUTO : model;
+    std::vector<Version> v = versions();
+    if (model == MODEL_FSR4_AUTO &&
+        std::none_of(v.begin(), v.end(), [](const Version& x) { return x.name.rfind("4.", 0) == 0; })) {
+        logf("vk: AMD FSR: AMD offers no FSR 4 model on this GPU (it offers: %s): INT8 Lite", listed(v).c_str());
+        g_model = MODEL_LITE;
+        v = versions();
+    }
     // (the version: AMD's newest for Auto; the 3.x one for FSR 3.1; the 4.x one for a model, which says yes now)
     const Version* pick = nullptr;
     for (const auto& x : v) {

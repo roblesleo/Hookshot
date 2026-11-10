@@ -196,36 +196,44 @@ const char* hn_dlss_model(int v, int variant) {
     if (variant == 2) return env;
     return variant == 0 ? t[std::clamp(v, 0, ur::kModels - 1)] : nullptr;
 }
-/// (leo-local) The FSR model row (opts.fsr_model, vk_ffx.h): FSR's version and, for FSR 4, its model
+/// (leo-local) The FSR version and FSR 4 model rows (opts.fsr_version, opts.fsr_model, vk_ffx.h)
 const char* fsr_model_env() {
     static const char* const e = getenv("RX_VK_FSR_MODEL");
     return e && *e ? e : nullptr;
 }
-const char* tx_fsr_model(int v) {
-    static const char* const t[] = {"Auto (AMD's choice)", "FSR 3.1", "FSR 4 FP8", "FSR 4 INT8", "FSR 4 INT8 RDNA2",
-                                    "FSR 4 INT8 Lite"};
-    if (fsr_model_env()) {
-        static char b[48];
-        snprintf(b, sizeof b, "%s (RX_VK_FSR_MODEL)", t[ffx::wanted_model()]);
-        return b;
-    }
-    return t[std::clamp(v, 0, ffx::kModels - 1)];
+bool fsr_drawing() { return upscaler() == ur::FSR || upscaler() == ur::FSR_AA; }
+const char* tx_fsr_version(int v) {
+    static const char* const t[] = {"Auto (AMD's choice)", "FSR 4", "FSR 3.1"};
+    if (fsr_model_env()) return "Set by RX_VK_FSR_MODEL";
+    return t[std::clamp(v, 0, ffx::kVersions - 1)];
 }
-const char* hn_fsr_model(int v, int variant) {
+const char* hn_fsr_version(int v, int variant) {
     static const char* const t[] = {
         "The newest FSR AMD offers on this GPU: FSR 4 on Radeon RX 9000, RX 7000, RX 6000 and recent Ryzen APUs, FSR 3.1 elsewhere.",
+        "FSR 4, AMD's machine-learning upscaler: the sharpest. Choose its model below.",
         "FSR 3.1: no machine learning, the lightest. Runs on every GPU.",
-        "FSR 4's full model, made for FP8 hardware (Radeon RX 9000). Elsewhere it may not run.",
-        "FSR 4's INT8 model, made for Radeon RX 7000. Forced on other GPUs: slower than FSR 3.1 there.",
-        "FSR 4's INT8 model made for Radeon RX 6000. Forced on other GPUs: slower than FSR 3.1 there.",
-        "FSR 4's light INT8 model, made for handhelds and APUs: the fastest FSR 4 on GPUs AMD does not list.",
     };
     static const char* const unused = "Used by AMD FSR: choose it in the Upscaler row.";
     static const char* const env = "Set for this run by RX_VK_FSR_MODEL.";
-    if (variant < 0) variant = fsr_model_env() ? 2 : (upscaler() == ur::FSR || upscaler() == ur::FSR_AA) ? 0 : 1;
+    if (variant < 0) variant = fsr_model_env() ? 2 : fsr_drawing() ? 0 : 1;
     if (variant == 1) return unused;
     if (variant == 2) return env;
-    return variant == 0 ? t[std::clamp(v, 0, ffx::kModels - 1)] : nullptr;
+    return variant == 0 ? t[std::clamp(v, 0, ffx::kVersions - 1)] : nullptr;
+}
+const char* tx_fsr_model(int v) {
+    static const char* const t[] = {"Auto (AMD's choice)", "FP8", "INT8", "INT8 RDNA2", "INT8 Lite"};
+    return t[std::clamp(v, 0, ffx::kFsr4Models - 1)];
+}
+const char* hn_fsr_model(int v, int variant) {
+    static const char* const t[] = {
+        "The model AMD picks for this GPU; INT8 Lite where AMD offers no FSR 4 (NVIDIA and Intel GPUs).",
+        "FSR 4's full model, made for FP8 hardware (Radeon RX 9000). Elsewhere it may not run.",
+        "FSR 4's INT8 model, made for Radeon RX 7000. On other GPUs: slower than FSR 3.1.",
+        "FSR 4's INT8 model made for Radeon RX 6000. On other GPUs: slower than FSR 3.1.",
+        "FSR 4's light INT8 model, made for handhelds and APUs: the fastest FSR 4 on GPUs AMD does not list.",
+    };
+    if (variant > 0) return nullptr;
+    return t[std::clamp(v, 0, ffx::kFsr4Models - 1)];
 }
 const char* tx_percent(int v) {
     static char b[8];
@@ -312,6 +320,7 @@ const char* hn_resolution(int v, int variant) {
 bool row_fixed(const int* value) {
     return (value == &opts.reflex && !reflex_available()) ||
            (value == &opts.dlss && ur::upscaler_fixed(dlss_why() == DLSS_OK || fsr_ok())) ||
+           (value == &opts.fsr_version && ur::fsr_model_fixed(upscaler(), fsr_model_env() != nullptr)) ||
            (value == &opts.fsr_model && ur::fsr_model_fixed(upscaler(), fsr_model_env() != nullptr)) ||
            (value == &opts.resolution && ur::resolution_fixed(upscaler())) || (value == &opts.upscale && !filter_needed()) ||
            (value == &opts.dlss_model && ur::model_fixed(upscaler(), dlss_preset_env() != nullptr));
@@ -526,8 +535,10 @@ Row rows[] = {
      hn_upscaler},
     {TAB_GRAPHICS, "DLSS model", &opts.dlss_model, 0, ur::kModels - 1, 1, tx_dlss_model,
      "Which of NVIDIA's DLSS networks draws the picture.", hn_dlss_model, false, true},
-    {TAB_GRAPHICS, "FSR model", &opts.fsr_model, 0, ffx::kModels - 1, 1, tx_fsr_model,
-     "Which AMD FSR draws the picture: FSR 4's models or FSR 3.1.", hn_fsr_model, false, true},
+    {TAB_GRAPHICS, "FSR version", &opts.fsr_version, 0, ffx::kVersions - 1, 1, tx_fsr_version,
+     "Which AMD FSR draws the picture: FSR 4 or FSR 3.1.", hn_fsr_version, false, true},
+    {TAB_GRAPHICS, "FSR 4 model", &opts.fsr_model, 0, ffx::kFsr4Models - 1, 1, tx_fsr_model,
+     "Which of FSR 4's networks draws the picture.", hn_fsr_model, false, true},
     {TAB_GRAPHICS, "Render resolution", &opts.resolution, 0, ur::kValues - 1, 1, tx_resolution,
      "The share of the output the 3D is drawn at; the Upscaler fills in the rest.", hn_resolution},
     {TAB_GRAPHICS, "Window scaling filter", &opts.upscale, 0, 2, 1, tx_filter,
@@ -749,8 +760,10 @@ std::string restart_line(HDC dc, int width) {
 /// A row on its tab: the Cheats one only with cheats on, the Upscaler only in a build with DLSS
 bool row_shown(int i) {
     return (i != kCheatsRow || cheats_enabled) && (rows[i].value != &opts.dlss || ur::upscaler_shown(dlss_built() || ffx::built())) &&
-           (rows[i].value != &opts.dlss_model || ur::model_shown(dlss_built())) &&
-           (rows[i].value != &opts.fsr_model || ffx::built());
+           // (leo-local: each model row only while its upscaler is the one chosen)
+           (rows[i].value != &opts.dlss_model || (ur::model_shown(dlss_built()) && (upscaler() == ur::DLSS || upscaler() == ur::DLAA))) &&
+           (rows[i].value != &opts.fsr_version || (ffx::built() && fsr_drawing())) &&
+           (rows[i].value != &opts.fsr_model || (ffx::built() && fsr_drawing() && opts.fsr_version == 1));
 }
 int tab_row_count(int t) {
     int c = 0;

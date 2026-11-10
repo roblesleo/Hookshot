@@ -25,10 +25,14 @@ bool built();
 /// Loads AMD's runtime once and asks it what it offers on this device, so why() knows before the first upscale (the menu)
 void probe();
 
-/// The FSR model row (opts.fsr_model): 0 AMD's own choice (the newest it offers on this GPU), 1 FSR 3.1, 2 FSR 4 FP8 (made
-/// for RDNA 4), 3 FSR 4 INT8 (RDNA 3), 4 FSR 4 INT8 for RDNA 2, 5 FSR 4 INT8 Lite (made for APUs and handhelds). 2 to 5 run
-/// that model whatever AMD's own check says (it may not run on every GPU); RX_VK_FSR_MODEL=<n> over the row
-enum { MODEL_AUTO = 0, MODEL_FSR3 = 1, MODEL_FP8 = 2, MODEL_INT8 = 3, MODEL_INT8_RDNA2 = 4, MODEL_LITE = 5, kModels = 6 };
+/// What FSR is asked for, from the FSR version and FSR 4 model rows (opts.fsr_version, opts.fsr_model): 0 AMD's own choice
+/// (the newest it offers on this GPU), 1 FSR 3.1, 2 FSR 4 FP8 (made for RDNA 4), 3 FSR 4 INT8 (RDNA 3), 4 FSR 4 INT8 for
+/// RDNA 2, 5 FSR 4 INT8 Lite (made for APUs and handhelds), 6 FSR 4 by AMD's choice of model (INT8 Lite where AMD offers no
+/// FSR 4). 2 to 5 run that model whatever AMD's own check says (it may not run on every GPU); RX_VK_FSR_MODEL=<n> over both rows
+enum { MODEL_AUTO = 0, MODEL_FSR3 = 1, MODEL_FP8 = 2, MODEL_INT8 = 3, MODEL_INT8_RDNA2 = 4, MODEL_LITE = 5, MODEL_FSR4_AUTO = 6,
+       kModels = 7 };
+/// The rows' values: the FSR version row (0 Auto, 1 FSR 4, 2 FSR 3.1) and the FSR 4 model row (0 Auto, 1 FP8 .. 4 INT8 Lite)
+enum { kVersions = 3, kFsr4Models = 5 };
 int wanted_model();
 
 /// One image FSR reads or writes: a 2D colour image of one level, in VK_IMAGE_LAYOUT_GENERAL (left so after)
