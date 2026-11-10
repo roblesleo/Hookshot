@@ -94,6 +94,19 @@ static class I18n
         if (!named)
             foreach (var (re, key) in templates)
                 if (re.Match(text) is { Success: true } m && Holes(m)) return Fill(table[key], m);
+        // (a line the code put together from parts, "Usually about 45 minutes · your PC stays usable": each part on its own)
+        if (!named && text.Contains(" · "))
+        {
+            var parts = text.Split(" · ");
+            var changed = false;
+            for (var i = 0; i < parts.Length; i++)
+            {
+                var p = Part(parts[i], i > 0);
+                changed |= p != parts[i];
+                parts[i] = p;
+            }
+            if (changed) return string.Join(" · ", parts);
+        }
         var result = text;
         foreach (var key in plainFragments)
             if (result.Contains(key)) result = result.Replace(key, table[key]);
@@ -102,7 +115,49 @@ static class I18n
         return result;
     }
 
+    /// One part of a line put together with " · ": the table's text for it, or for it as a part after a " · ", or a template
+    static string Part(string p, bool after)
+    {
+        if (table!.TryGetValue(p, out var t)) return t;
+        if (after && table.TryGetValue(" · " + p, out var f) && f.StartsWith(" · ")) return f[3..];
+        foreach (var (re, key) in templates)
+            if (re.Match(p) is { Success: true } m && Holes(m)) return Fill(table[key], m);
+        return p;
+    }
+
     // ---- the window's texts, where they are shown ----
+
+    // (each text block and control is watched from when it is first seen: a text the code sets is translated at once, before
+    // the window draws it, so it never shows in English first)
+    static readonly ConditionalWeakTable<object, object> watched = new();
+    static readonly System.ComponentModel.DependencyPropertyDescriptor TextProp =
+        System.ComponentModel.DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
+    static readonly System.ComponentModel.DependencyPropertyDescriptor ContentProp =
+        System.ComponentModel.DependencyPropertyDescriptor.FromProperty(ContentControl.ContentProperty, typeof(ContentControl));
+
+    static void Watch(TextBlock tb)
+    {
+        if (watched.TryGetValue(tb, out _)) return;
+        watched.Add(tb, true);
+        TextProp.AddValueChanged(tb, (_, _) =>
+        {
+            if (tb.Text.Length == 0 || tb.Inlines.Count > 1) return;
+            var t = Show(tb, tb.Text, false);
+            if (t != tb.Text) tb.Text = t;
+        });
+    }
+
+    static void Watch(ContentControl cc)
+    {
+        if (watched.TryGetValue(cc, out _)) return;
+        watched.Add(cc, true);
+        ContentProp.AddValueChanged(cc, (_, _) =>
+        {
+            if (cc.Content is not string text || text.Length == 0) return;
+            var t = Show(cc, text, false);
+            if (t != text) cc.Content = t;
+        });
+    }
 
     sealed class Seen { public string English = "", Shown = ""; }
     static readonly ConditionalWeakTable<object, Seen> seen = new(), tips = new();
@@ -143,16 +198,21 @@ static class I18n
                             if (t != run.Text) run.Text = t;
                         }
                     }
-                    else if (tb.Text.Length > 0)
+                    else if (tb.Text.Length > 0 || !watched.TryGetValue(tb, out _))
                     {
+                        Watch(tb);
                         var t = Show(tb, tb.Text, again);
                         if (t != tb.Text) tb.Text = t;
                     }
                 }
-                else if (fe is ContentControl cc && cc.Content is string text && text.Length > 0 && fe is not Window)
+                else if (fe is ContentControl cc && fe is not Window && (cc.Content is string { Length: > 0 } || cc.Content == null))
                 {
-                    var t = Show(cc, text, again);
-                    if (t != text) cc.Content = t;
+                    Watch(cc);
+                    if (cc.Content is string text)
+                    {
+                        var t = Show(cc, text, again);
+                        if (t != text) cc.Content = t;
+                    }
                 }
             }
             if (d is Visual or System.Windows.Media.Media3D.Visual3D)
