@@ -51,6 +51,7 @@
 #ifndef HOOKSHOT_ENV_H   // (env_on: the switches' one rule)
 #include "hookshot_env.h"
 #endif
+#include "fsr4_models.h"   // (fork: the FSR 4 model row)
 #include "pipeline_share.h"   // (Save my pipeline list: the zip for issue 2034)
 #ifndef _WIN32   // (Save my pipeline list: the desktop's programs. On Windows, shell32 and ole32 are loaded when it is used)
 #include <fcntl.h>
@@ -287,6 +288,21 @@ const char* hn_dlss_model(int v, int variant) {
     if (variant == 1) return unused;
     if (variant == 2) return env;
     return variant == 0 ? t[std::clamp(v, 0, ur::kModels - 1)] : nullptr;
+}
+/// (fork) The FSR 4 model row (opts.fsr4_model, fsr4_models.h)
+const char* tx_fsr4_model(int v) {
+    static const char* const t[] = {"Auto (AMD's choice)", "INT8", "INT8 RDNA2", "INT8 Lite"};
+    return t[std::clamp(v, 0, 3)];
+}
+const char* hn_fsr4_model(int v, int variant) {
+    static const char* const t[] = {
+        "AMD's pick for this GPU; INT8 Lite where AMD offers no FSR 4 (NVIDIA and Intel GPUs, some Ryzen APUs).",
+        "FSR 4's INT8 network, made for Radeon RX 7000. On other GPUs it costs more GPU time than INT8 Lite.",
+        "FSR 4's INT8 network made for Radeon RX 6000.",
+        "FSR 4's light INT8 network, made for handhelds and APUs: the fastest FSR 4.",
+    };
+    if (variant > 0) return nullptr;
+    return t[std::clamp(v, 0, 3)];
 }
 /// The Game language row (opts.game_lang): language.txt's language, written once the row is left (game_lang_tick); the game
 /// reads it at its start
@@ -836,6 +852,8 @@ Row rows[] = {
     {TAB_GRAPHICS, "VRAM budget", &opts.vram_budget, 0, kVramBudgets - 1, 1, tx_vram_budget,
      "How much video memory the game's textures may use, and its copies of game memory with them. Lower it if the game "
      "stutters after a while of play; a preset sets it.", hn_vram_budget, false, true},
+    {TAB_GRAPHICS, "FSR 4 model", &opts.fsr4_model, 0, 3, 1, tx_fsr4_model, "Which of AMD FSR 4's networks draws the picture.",
+     hn_fsr4_model, false, true},   // (fork)
     {TAB_GRAPHICS, "Render resolution", &opts.resolution, 0, ur::kValues - 1, 1, tx_resolution,
      "The share of the output the 3D is drawn at; the Upscaler fills in the rest.", hn_resolution},
     // (frame generation beside the Upscaler: the frames it makes come from the same picture, and DLSS Frame Generation from
@@ -1248,7 +1266,9 @@ bool row_shown(int i) {
            (v != &opts.dlss || ur::upscaler_shown(upscalers_available())) &&
            (v != &opts.dlss_model || ur::model_shown(dlss_why() == DLSS_OK)) &&
            ((v != &opts.hdr_white && v != &opts.hdr_peak && v != &opts.hdr_contrast) || opts.hdr != 0) &&
-           (v != &opts.hdr_tonemap || opts.hdr == 2);
+           (v != &opts.hdr_tonemap || opts.hdr == 2) &&
+           // (fork: the FSR 4 model row while FSR 4 draws, where its upscaler library is the one whose models can be chosen)
+           (v != &opts.fsr4_model || (fsr4_models::g_hooked && ur::is_fsr4(upscaler())));
 }
 int tab_row_count(int t) {
     int c = 0;
