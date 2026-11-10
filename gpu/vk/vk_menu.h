@@ -16,6 +16,7 @@ struct Options {
     int reflex = 0;       // NVIDIA Reflex: 0 off, 1 on, 2 on + boost (vk_reflex.cpp; NVIDIA GPUs with VK_NV_low_latency2)
     int dlss = 0;         // the Upscaler: 0 the game's own network, 1 NVIDIA DLSS, 2 NVIDIA DLAA (vk_dlss.cpp; a build with NVIDIA's
                           // SDK only), 3 AMD FSR, 4 AMD FSR Native AA (vk_ffx.cpp; Windows, with AMD's runtime). Saved as dlss
+    int menu_lang = 0;    // (leo-local) this menu's language: 0 Auto (the game's, language.txt), 1 English, 2 Portuguese
     int fsr_version = 0;  // AMD FSR's version: 0 AMD's choice (the newest it offers on this GPU), 1 FSR 4, 2 FSR 3.1 (vk_ffx.h)
     int fsr_model = 0;    // FSR 4's model, with FSR 4: 0 AMD's choice (INT8 Lite where AMD offers none), 1 FP8, 2 INT8,
                           // 3 INT8 RDNA2, 4 INT8 Lite (vk_ffx.h). RX_VK_FSR_MODEL over both

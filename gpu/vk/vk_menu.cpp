@@ -39,12 +39,187 @@
 #define HOOKSHOT_VERSION "unknown"
 #endif
 
+#include "menu_pt.h"
+#include <unordered_map>
+
 namespace mkwvk {
 HWND app_window();
 
 Options opts;
 
 namespace {
+
+// ---- (leo-local) the menu's language: English as written here, or Brazilian Portuguese from menu_pt.h ----
+// Every text the menu draws goes through TextOutA and GetTextExtentPoint32A, which this file has as menu_text_out and
+// menu_text_extent below (Windows): the text is looked up whole (tr_text: as written, or a printf format of the table it
+// was made from), and drawn as UTF-16, so accents show. The word-wrapped help is looked up before it is wrapped (wrap_help).
+// Elsewhere (the POSIX GDI stand-in draws ASCII) the menu stays English.
+
+/// The game's language, from language.txt in the game folder (its first line that is not a comment), e.g. "pt-BR"
+std::string game_language() {
+    static const std::string lang = [] {
+        char exe[MAX_PATH];
+        const DWORD n = game_module_path(exe, MAX_PATH);
+        std::string path(exe, n);
+        path = path.substr(0, path.find_last_of("\\/") + 1) + "language.txt";
+        std::string found;
+        if (FILE* f = fopen(path.c_str(), "r")) {
+            char line[128];
+            while (found.empty() && fgets(line, sizeof line, f)) {
+                std::string l(line);
+                while (!l.empty() && (l.back() == '\n' || l.back() == '\r' || l.back() == ' ')) l.pop_back();
+                size_t a = l.find_first_not_of(" \t");
+                if (a == std::string::npos || l[a] == '#') continue;
+                found = l.substr(a);
+            }
+            fclose(f);
+        }
+        return found;
+    }();
+    return lang;
+}
+/// Portuguese now: the Menu language row (opts.menu_lang: 0 Auto, the game's language; 1 English; 2 Portuguese)
+bool menu_pt_now() {
+#ifdef _WIN32
+    if (opts.menu_lang == 2) return true;
+    if (opts.menu_lang == 1) return false;
+    return game_language().rfind("pt", 0) == 0;
+#else
+    return false;
+#endif
+}
+const std::unordered_map<std::string, const char*>& pt_table() {
+    static const std::unordered_map<std::string, const char*> t = [] {
+        std::unordered_map<std::string, const char*> m;
+        for (const auto& e : menu_pt::kEntries) m.emplace(e.en, e.pt);
+        return m;
+    }();
+    return t;
+}
+/// A printf conversion at f (after its '%'): its length, and its kind ('s' text, 'n' a number, '%' a percent sign), or 0
+size_t conversion(const char* f, char& kind) {
+    size_t i = 0;
+    while (f[i] && strchr("-+ #0", f[i])) i++;
+    while (f[i] >= '0' && f[i] <= '9') i++;
+    if (f[i] == '.') {
+        i++;
+        while (f[i] >= '0' && f[i] <= '9') i++;
+    }
+    while (f[i] == 'l' || f[i] == 'h' || f[i] == 'z') i++;
+    switch (f[i]) {
+    case 's': kind = 's'; return i + 1;
+    case 'd': case 'u': case 'f': case 'x': case 'g': kind = 'n'; return i + 1;
+    case 'c': kind = 'c'; return i + 1;
+    case '%': kind = '%'; return i + 1;
+    default: return 0;
+    }
+}
+/// Whether text t is what format f prints, its conversions' texts into args
+bool match_format(const char* f, const char* t, std::vector<std::string>& args) {
+    while (*f) {
+        if (*f != '%') {
+            if (*f != *t) return false;
+            f++, t++;
+            continue;
+        }
+        char kind = 0;
+        const size_t n = conversion(f + 1, kind);
+        if (!n) {   // (a lone '%': a plain character)
+            if (*t != '%') return false;
+            f++, t++;
+            continue;
+        }
+        f += 1 + n;
+        if (kind == '%') {
+            if (*t != '%') return false;
+            t++;
+            continue;
+        }
+        if (kind == 'c') {
+            if (!*t) return false;
+            args.emplace_back(t, 1);
+            if (match_format(f, t + 1, args)) return true;
+            args.pop_back();
+            return false;
+        }
+        // (a text or a number: each length from the shortest, the rest of the format matched after it)
+        for (size_t len = 1; t[len - 1]; len++) {
+            if (kind == 'n' && !strchr("0123456789.-+x", t[len - 1])) break;
+            args.emplace_back(t, len);
+            if (match_format(f, t + len, args)) return true;
+            args.pop_back();
+        }
+        return false;
+    }
+    return !*t;
+}
+std::string tr_text(const std::string& s);
+/// format pt with args as the texts of its conversions, in order (texts looked up themselves)
+std::string fill_format(const char* pt, const std::vector<std::string>& args) {
+    std::string out;
+    size_t a = 0;
+    for (const char* f = pt; *f;) {
+        char kind = 0;
+        const size_t n = *f == '%' ? conversion(f + 1, kind) : 0;
+        if (!n) {
+            out += *f++;
+            continue;
+        }
+        f += 1 + n;
+        if (kind == '%') out += '%';
+        else if (a < args.size()) out += kind == 's' ? tr_text(args[a++]) : args[a++];
+    }
+    return out;
+}
+/// The text as the menu's language shows it: s itself in English, or s not in the table
+std::string tr_text(const std::string& s) {
+    if (s.empty() || !menu_pt_now()) return s;
+    const auto& t = pt_table();
+    if (auto it = t.find(s); it != t.end()) return it->second;
+    static std::vector<const menu_pt::Entry*> formats = [] {
+        std::vector<const menu_pt::Entry*> v;
+        for (const auto& e : menu_pt::kEntries) {
+            for (const char* p = strchr(e.en, '%'); p; p = strchr(p + 1, '%')) {
+                char kind = 0;
+                if (conversion(p + 1, kind) && kind != '%') {
+                    v.push_back(&e);
+                    break;
+                }
+            }
+        }
+        return v;
+    }();
+    for (const menu_pt::Entry* e : formats) {
+        std::vector<std::string> args;
+        if (match_format(e->en, s.c_str(), args)) return fill_format(e->pt, args);
+    }
+    return s;
+}
+/// A string literal or row name in the menu's language (kept: the table's own storage, or one copy per text)
+const char* tr(const char* s) {
+    if (!s || !menu_pt_now()) return s;
+    const auto& t = pt_table();
+    if (auto it = t.find(s); it != t.end()) return it->second;
+    return s;
+}
+#ifdef _WIN32
+std::wstring widen(const std::string& s) {
+    const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
+    std::wstring w(n > 0 ? n : 0, L'\0');
+    if (n > 0) MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), w.data(), n);
+    return w;
+}
+BOOL menu_text_out(HDC dc, int x, int y, const char* s, int n) {
+    const std::wstring w = widen(tr_text(std::string(s, n > 0 ? n : 0)));
+    return TextOutW(dc, x, y, w.c_str(), (int)w.size());
+}
+BOOL menu_text_extent(HDC dc, const char* s, int n, SIZE* size) {
+    const std::wstring w = widen(tr_text(std::string(s, n > 0 ? n : 0)));
+    return GetTextExtentPoint32W(dc, w.c_str(), (int)w.size(), size);
+}
+#define TextOutA menu_text_out
+#define GetTextExtentPoint32A menu_text_extent
+#endif
 
 enum MenuTab {
     TAB_GRAPHICS = 0,
@@ -140,7 +315,7 @@ const char* hn_upscaler(int v, int variant) {
         "themselves can trail for now.",
         "NVIDIA's, the 3D at full size with its edges smoothed; the slowest. Softer than the game's own: set Sharpness to "
         "around 80%. Things that move by themselves can trail for now.",
-        "AMD's, from a smaller 3D: FSR 4 or FSR 3.1, as the FSR model row says. Runs on any GPU. Set Sharpness to around 80%.",
+        "AMD's, from a smaller 3D: FSR 4 or FSR 3.1, as the FSR version row says. Runs on any GPU. Set Sharpness to around 80%.",
         "AMD's, the 3D at full size with its edges smoothed; the slowest. Set Sharpness to around 80%.",
     };
     static const char* const why[DLSS_WHY_COUNT] = {
@@ -234,6 +409,17 @@ const char* hn_fsr_model(int v, int variant) {
     };
     if (variant > 0) return nullptr;
     return t[std::clamp(v, 0, ffx::kFsr4Models - 1)];
+}
+/// (leo-local) The Menu language row (opts.menu_lang): 0 Auto (the game's language), 1 English, 2 Portuguese
+const char* tx_menu_lang(int v) {
+    static const char* const t[] = {"Auto (game's language)", "English", "Português"};
+    return t[std::clamp(v, 0, 2)];
+}
+const char* hn_menu_lang(int v, int variant) {
+    static const char* const t[] = {"Follows the game's language (language.txt in the game folder).", "This menu in English.",
+                                    "This menu in Brazilian Portuguese."};
+    if (variant > 0) return nullptr;
+    return t[std::clamp(v, 0, 2)];
 }
 const char* tx_percent(int v) {
     static char b[8];
@@ -565,6 +751,8 @@ Row rows[] = {
     {TAB_GAMEPLAY, "Microphone", &opts.mic, 0, 2 + kMaxMics, 1, tx_mic,
      "What the ocarina hears when the game's microphone option is on (playing an instrument, or humming).", hn_mic, false,
      true},
+    {TAB_GAMEPLAY, "Menu language", &opts.menu_lang, 0, 2, 1, tx_menu_lang, "The language of this menu.", hn_menu_lang, false,
+     true},   // (leo-local)
 
     // Controls (15 rows)
     {TAB_CONTROLS, "Controller in background", &opts.pad_background, 0, 1, 1, tx_onoff,
@@ -715,7 +903,7 @@ void restart_init() {
     done = true;
     for (int i = 0; i < kRows; i++) {
         restart_slot[i] = rows[i].restart && rows[i].value ? restart_state.add(*rows[i].value) : -1;
-        if (restart_slot[i] >= 0) restart_names[restart_slot[i]] = rows[i].name;
+        if (restart_slot[i] >= 0) restart_names[restart_slot[i]] = tr(rows[i].name);   // (leo-local: tr, the menu's language)
     }
 }
 int restart_slot_of(const Row& r) { return restart_slot[&r - rows]; }
@@ -748,8 +936,8 @@ std::string restart_line(HDC dc, int width) {
         int named = 0, more = 0;
         for (int i = 0; i < restart_state.n; i++)
             if ((all >> i) & 1) (named < keep ? (shown |= 1u << i, named++) : more++);
-        line = "Restart needed: " + mr::names(restart_names, restart_state.n, shown);
-        if (more) line += (named ? " and " : "") + std::to_string(more) + (named ? " more" : more > 1 ? " settings" : " setting");
+        line = tr("Restart needed: ") + mr::names(restart_names, restart_state.n, shown);
+        if (more) line += (named ? tr(" and ") : "") + std::to_string(more) + tr(named ? " more" : more > 1 ? " settings" : " setting");
         SIZE sz{};
         GetTextExtentPoint32A(dc, line.c_str(), (int)line.size(), &sz);
         if (sz.cx <= width) break;
@@ -1162,6 +1350,8 @@ constexpr int kHintGap = 4, kHintIndent = 10;   // (the value's line: below the 
 /// The help text word-wrapped to width, a TextOutA a line (the POSIX GDI stand-in has no DrawTextA), drawn at (x, y)
 /// when draw: its height in pixels either way
 int wrap_help(HDC dc, const char* text, int width, int x, int y, bool draw) {
+    const std::string shown = tr_text(text ? text : "");   // (leo-local: the menu's language, before it is wrapped)
+    text = shown.c_str();
     SIZE sz{};
     GetTextExtentPoint32A(dc, "Ag", 2, &sz);
     const int line_h = (int)sz.cy;
@@ -1220,7 +1410,7 @@ void paint_menu(HDC dc, uint32_t w, uint32_t h, int s) {
     SelectObject(dc, body);
     if (page == 5) {   // (hookshot) the restart question, as the menu closes with a setting that takes a restart
         SetTextColor(dc, RGB(236, 240, 236));
-        const std::string ask = "Restart to apply " + restart_list(" and ") + "?";
+        const std::string ask = tr("Restart to apply ") + restart_list(tr(" and ")) + "?";
         const int asked = wrap_help(dc, ask.c_str(), (int)w - 32 * s, 16 * s, 46 * s, true);   // (one line or two)
         HFONT small = font(14 * s, FW_NORMAL);
         SelectObject(dc, small);
