@@ -39,7 +39,7 @@
 #define HOOKSHOT_VERSION "unknown"
 #endif
 
-#include "menu_pt.h"
+#include "menu_i18n.h"
 #include <unordered_map>
 
 namespace mkwvk {
@@ -49,7 +49,7 @@ Options opts;
 
 namespace {
 
-// ---- (leo-local) the menu's language: English as written here, or Brazilian Portuguese from menu_pt.h ----
+// ---- (leo-local) the menu's language: English as written here, or one of menu_i18n.h's ----
 // Every text the menu draws goes through TextOutA and GetTextExtentPoint32A, which this file has as menu_text_out and
 // menu_text_extent below (Windows): the text is looked up whole (tr_text: as written, or a printf format of the table it
 // was made from), and drawn as UTF-16, so accents show. The word-wrapped help is looked up before it is wrapped (wrap_help).
@@ -123,25 +123,35 @@ void write_game_language(int index) {
         fclose(f);
     }
 }
-/// Portuguese now: the Menu language row (opts.menu_lang: 0 Auto, the game's language; 1 English; 2 Portuguese)
-bool menu_pt_now() {
+/// The menu's language now (menu_i18n::kLangs; 0 English): the Menu language row (opts.menu_lang: 0 Auto, the game's
+/// language; else kLangs[menu_lang - 1]). Auto takes the language of the game language's code, or of its first part
+/// (fr-CA: fr), else English
+int menu_lang_now() {
 #ifdef _WIN32
-    if (opts.menu_lang == 2) return true;
-    if (opts.menu_lang == 1) return false;
+    if (opts.menu_lang > 0) return std::clamp(opts.menu_lang - 1, 0, menu_i18n::kLangCount - 1);
     // (Auto: the Game language row's, once read; it follows a change there at once, the game itself after a restart)
-    if (game_lang_synced) return std::string(kGameLangs[std::clamp(opts.game_lang, 0, kGameLangCount - 1)].code).rfind("pt", 0) == 0;
-    return game_language().rfind("pt", 0) == 0;
+    const std::string code =
+        game_lang_synced ? std::string(kGameLangs[std::clamp(opts.game_lang, 0, kGameLangCount - 1)].code) : game_language();
+    for (int i = 0; i < menu_i18n::kLangCount; i++)
+        if (code == menu_i18n::kLangs[i].code) return i;
+    const std::string first = code.substr(0, code.find('-'));
+    for (int i = 0; i < menu_i18n::kLangCount; i++)
+        if (first == menu_i18n::kLangs[i].code) return i;
+    return 0;
 #else
-    return false;
+    return 0;   // (the POSIX GDI stand-in draws ASCII)
 #endif
 }
-const std::unordered_map<std::string, const char*>& pt_table() {
-    static const std::unordered_map<std::string, const char*> t = [] {
-        std::unordered_map<std::string, const char*> m;
-        for (const auto& e : menu_pt::kEntries) m.emplace(e.en, e.pt);
-        return m;
-    }();
-    return t;
+/// A language's table, made once each
+const std::unordered_map<std::string, const char*>& lang_table(int lang) {
+    static std::unordered_map<std::string, const char*> t[menu_i18n::kLangCount];
+    static bool made[menu_i18n::kLangCount] = {};
+    if (!made[lang]) {
+        made[lang] = true;
+        const menu_i18n::Lang& l = menu_i18n::kLangs[lang];
+        for (int i = 0; i < l.count; i++) t[lang].emplace(l.entries[i].en, l.entries[i].text);
+    }
+    return t[lang];
 }
 /// A printf conversion at f (after its '%'): its length, and its kind ('s' text, 'n' a number, '%' a percent sign), or 0
 size_t conversion(const char* f, char& kind) {
@@ -220,32 +230,36 @@ std::string fill_format(const char* pt, const std::vector<std::string>& args) {
 }
 /// The text as the menu's language shows it: s itself in English, or s not in the table
 std::string tr_text(const std::string& s) {
-    if (s.empty() || !menu_pt_now()) return s;
-    const auto& t = pt_table();
+    const int lang = menu_lang_now();
+    if (s.empty() || !lang) return s;
+    const auto& t = lang_table(lang);
     if (auto it = t.find(s); it != t.end()) return it->second;
-    static std::vector<const menu_pt::Entry*> formats = [] {
-        std::vector<const menu_pt::Entry*> v;
-        for (const auto& e : menu_pt::kEntries) {
-            for (const char* p = strchr(e.en, '%'); p; p = strchr(p + 1, '%')) {
+    // (the table's texts with printf conversions, once a language)
+    static std::vector<const menu_i18n::Entry*> formats[menu_i18n::kLangCount];
+    static bool listed[menu_i18n::kLangCount] = {};
+    if (!listed[lang]) {
+        listed[lang] = true;
+        const menu_i18n::Lang& l = menu_i18n::kLangs[lang];
+        for (int i = 0; i < l.count; i++)
+            for (const char* p = strchr(l.entries[i].en, '%'); p; p = strchr(p + 1, '%')) {
                 char kind = 0;
                 if (conversion(p + 1, kind) && kind != '%') {
-                    v.push_back(&e);
+                    formats[lang].push_back(&l.entries[i]);
                     break;
                 }
             }
-        }
-        return v;
-    }();
-    for (const menu_pt::Entry* e : formats) {
+    }
+    for (const menu_i18n::Entry* e : formats[lang]) {
         std::vector<std::string> args;
-        if (match_format(e->en, s.c_str(), args)) return fill_format(e->pt, args);
+        if (match_format(e->en, s.c_str(), args)) return fill_format(e->text, args);
     }
     return s;
 }
-/// A string literal or row name in the menu's language (kept: the table's own storage, or one copy per text)
+/// A string literal or row name in the menu's language (kept: the table's own storage, or the English)
 const char* tr(const char* s) {
-    if (!s || !menu_pt_now()) return s;
-    const auto& t = pt_table();
+    const int lang = menu_lang_now();
+    if (!s || !lang) return s;
+    const auto& t = lang_table(lang);
     if (auto it = t.find(s); it != t.end()) return it->second;
     return s;
 }
@@ -457,16 +471,14 @@ const char* hn_fsr_model(int v, int variant) {
     if (variant > 0) return nullptr;
     return t[std::clamp(v, 0, ffx::kFsr4Models - 1)];
 }
-/// (leo-local) The Menu language row (opts.menu_lang): 0 Auto (the game's language), 1 English, 2 Portuguese
+/// (leo-local) The Menu language row (opts.menu_lang): 0 Auto (the game's language), then menu_i18n::kLangs by their own names
 const char* tx_menu_lang(int v) {
-    static const char* const t[] = {"Auto (game's language)", "English", "Português"};
-    return t[std::clamp(v, 0, 2)];
+    if (v <= 0) return "Auto (game's language)";
+    return menu_i18n::kLangs[std::clamp(v - 1, 0, menu_i18n::kLangCount - 1)].name;
 }
 const char* hn_menu_lang(int v, int variant) {
-    static const char* const t[] = {"Follows the game's language (language.txt in the game folder).", "This menu in English.",
-                                    "This menu in Brazilian Portuguese."};
     if (variant > 0) return nullptr;
-    return t[std::clamp(v, 0, 2)];
+    return v <= 0 ? "Follows the game's language (language.txt in the game folder)." : "The language of this menu.";
 }
 /// The Game language row (opts.game_lang): language.txt's code, written when it changes; the game reads it at the start
 const char* tx_game_lang(int v) { return kGameLangs[std::clamp(v, 0, kGameLangCount - 1)].name; }
@@ -802,7 +814,7 @@ Row rows[] = {
      true},
     {TAB_GAMEPLAY, "Game language", &opts.game_lang, 0, kGameLangCount - 1, 1, tx_game_lang,
      "The game's own language, its text. Applies after a restart.", nullptr, true, true},   // (leo-local: language.txt)
-    {TAB_GAMEPLAY, "Menu language", &opts.menu_lang, 0, 2, 1, tx_menu_lang, "The language of this menu.", hn_menu_lang, false,
+    {TAB_GAMEPLAY, "Menu language", &opts.menu_lang, 0, menu_i18n::kLangCount, 1, tx_menu_lang, "The language of this menu.", hn_menu_lang, false,
      true},   // (leo-local)
 
     // Controls (15 rows)
@@ -955,10 +967,16 @@ void restart_init() {
     opts.game_lang = game_lang_index(game_language()), game_lang_synced = true;   // (leo-local: language.txt, not the ini)
     for (int i = 0; i < kRows; i++) {
         restart_slot[i] = rows[i].restart && rows[i].value ? restart_state.add(*rows[i].value) : -1;
-        if (restart_slot[i] >= 0) restart_names[restart_slot[i]] = tr(rows[i].name);   // (leo-local: tr, the menu's language)
+        if (restart_slot[i] >= 0) restart_names[restart_slot[i]] = rows[i].name;
     }
 }
 int restart_slot_of(const Row& r) { return restart_slot[&r - rows]; }
+/// (leo-local) the pending rows' names in the menu's language, for the restart line
+const char** shown_restart_names() {
+    static const char* t[mr::kMax];
+    for (int i = 0; i < restart_state.n; i++) t[i] = tr(restart_names[i]);
+    return t;
+}
 void restart_values(int* now) {
     for (int i = 0; i < kRows; i++)
         if (restart_slot[i] >= 0) now[restart_slot[i]] = *rows[i].value;
@@ -976,7 +994,7 @@ bool restart_ask() {
     return app_window() && restart_state.ask(now);
 }
 std::string restart_list(const char* last) {
-    return mr::names(restart_names, restart_state.n, restart_pending(), ", ", last);
+    return mr::names(shown_restart_names(), restart_state.n, restart_pending(), ", ", last);
 }
 int ask_sel = 0;   // (the restart question's choice: 0 Later, 1 Restart now)
 /// "Restart needed: " and the pending rows, on one line of width: the last ones as "and N more" when they do not fit
@@ -988,7 +1006,7 @@ std::string restart_line(HDC dc, int width) {
         int named = 0, more = 0;
         for (int i = 0; i < restart_state.n; i++)
             if ((all >> i) & 1) (named < keep ? (shown |= 1u << i, named++) : more++);
-        line = tr("Restart needed: ") + mr::names(restart_names, restart_state.n, shown);
+        line = tr("Restart needed: ") + mr::names(shown_restart_names(), restart_state.n, shown);
         if (more) line += (named ? tr(" and ") : "") + std::to_string(more) + tr(named ? " more" : more > 1 ? " settings" : " setting");
         SIZE sz{};
         GetTextExtentPoint32A(dc, line.c_str(), (int)line.size(), &sz);
@@ -1409,10 +1427,26 @@ int wrap_help(HDC dc, const char* text, int width, int x, int y, bool draw) {
     GetTextExtentPoint32A(dc, "Ag", 2, &sz);
     const int line_h = (int)sz.cy;
     int lines = 0;
+    // (leo-local: a line breaks at a space, and also before and after a character of the CJK scripts, which write no
+    // spaces between words: U+2E80 and up, as UTF-8's three- and four-byte characters from E2 BA 80)
+    const auto cjk = [](const char* q) {
+        const unsigned char c0 = (unsigned char)q[0], c1 = (unsigned char)q[1];
+        return c0 >= 0xF0 || (c0 >= 0xE3) || (c0 == 0xE2 && c1 >= 0xBA);
+    };
+    const auto char_len = [](const char* q) {
+        const unsigned char c0 = (unsigned char)q[0];
+        int n = c0 >= 0xF0 ? 4 : c0 >= 0xE0 ? 3 : c0 >= 0xC0 ? 2 : 1;
+        for (int i = 1; i < n; i++)
+            if (!q[i]) return i;
+        return n;
+    };
     for (const char* p = text; *p;) {
         int n = 0;   // (the most whole words that fit; one word at least, however long)
-        for (int end = 0;; end++) {
-            while (p[end] && p[end] != ' ') end++;
+        for (int end = 0;;) {
+            if (p[end] == ' ') end++;
+            if (p[end] && cjk(p + end)) end += char_len(p + end);
+            else
+                while (p[end] && p[end] != ' ' && !cjk(p + end)) end++;
             GetTextExtentPoint32A(dc, p, end, &sz);
             if (n && sz.cx > width) break;
             n = end;

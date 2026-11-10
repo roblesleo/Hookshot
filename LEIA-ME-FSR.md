@@ -3,7 +3,7 @@
 Este fork do [Hookshot](https://github.com/NotRexed/Hookshot) traz três novidades:
 
 - **AMD FSR 4 e FSR 3.1** no menu de upscaling, ao lado do DLSS. Funciona em qualquer placa de vídeo.
-- **Menu do F1 em português**, com a opção de idioma do menu e do jogo.
+- **Menu do F1 em 13 idiomas**, português incluído, com a opção de idioma do menu e do jogo.
 - **Uma janela de montagem**, o mini-builder, que monta o jogo a partir da sua cópia sem usar linha de comando.
 
 O resto é o Hookshot original. Todo o crédito do port é do projeto Hookshot.
@@ -51,7 +51,7 @@ DLSS. Ela confere cada arquivo pelo hash.
 | Opção | O que faz |
 |---|---|
 | **Idioma do jogo** | O idioma dos textos do jogo. Grava o `language.txt` e vale depois de reiniciar. |
-| **Idioma do menu** | **Auto** segue o idioma do jogo. Também dá para escolher **English** ou **Português**. |
+| **Idioma do menu** | **Auto** segue o idioma do jogo. Também dá para escolher um de 13 idiomas: inglês, português, espanhol (América Latina e Espanha), francês, alemão, italiano, holandês, polonês, russo, japonês, coreano e chinês (simplificado e tradicional). |
 
 ### Qual FSR usar?
 
