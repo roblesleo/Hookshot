@@ -155,10 +155,20 @@ public partial class MainWindow : Window
         updateTarget = latestTag ?? builder;
         if (game != null && updateTarget != null && game != updateTarget && !sourcePicked) mode = Mode.UpdateGame;
         else if (game != null && !sourcePicked) mode = Mode.UpToDate;
+        // (fork: a ticked upscaler the game was built without, FSR 4 or DLSS: Update builds the folder again with it)
+        var lacking = mode == Mode.UpToDate && Fork.On
+            ? Fork.Missing(OutPath.Text, FsrTick.IsChecked == true, DlssTick.IsChecked == true) : new List<string>();
+        if (lacking.Count > 0) mode = Mode.UpdateGame;
         else if (latestTag != null && builder != null && builder != latestTag) mode = Mode.UpdateBuilder;
         else mode = Mode.Build;
         switch (mode)
         {
+            case Mode.UpdateGame when lacking.Count > 0:
+                FilesTitle.Text = "Update to add " + string.Join(" + ", lacking);
+                FilesSub.Text = $"Your game was built without {string.Join(" + ", lacking)}. Update builds it again from the game " +
+                                "files kept in its folder, with what you ticked. Your saves stay.";
+                BuildButton.Content = "Update";
+                break;
             case Mode.UpdateGame:
                 FilesTitle.Text = "Update available";
                 FilesSub.Text = $"Hookshot {updateTarget} is available. Your game is {game}: Update builds it again from the game files kept in " +
@@ -775,6 +785,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, Fork.FsrLicense, "AMD FSR 4", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
             FsrTick.IsChecked = false;
         SaveSettings();
+        RefreshMode();
     }
 
     /// The NVIDIA DLSS tick: NVIDIA's license first, and the tick stays only when it is accepted
@@ -784,6 +795,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, DlssLicense, "NVIDIA DLSS", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
             DlssTick.IsChecked = false;
         SaveSettings();   // (kept at once, not only when Build is pressed: ticked and closed, it is still ticked next time)
+        RefreshMode();
     }
 
     static readonly (string Id, string Build, string Update)[] Stages =
@@ -1306,7 +1318,9 @@ public partial class MainWindow : Window
                     File.Exists(System.IO.Path.Combine(Storage.NgxSdk, "LICENSE.txt")));
         // (prepareNow: the saved choice, read in BeginUpdate. The launcher's Update and the --update start after a self-update never
         // ran ApplySettings, so the tick there is only its default)
-        Run(tools, ShaderStep.Args(new List<string> { "--update", folder }, prepareNow), keepRows: true, dlss: dlss);
+        var update = new List<string> { "--update", folder };
+        if (Fork.On && BuilderSettings.Load(SettingsPath)?.Fsr == true) update.Add("--fsr");   // (fork: the tick adds FSR 4 to a folder without it)
+        Run(tools, ShaderStep.Args(update, prepareNow), keepRows: true, dlss: dlss);
     }
 
     // ================= the window =================

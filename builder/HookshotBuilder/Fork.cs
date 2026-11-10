@@ -84,4 +84,33 @@ static class Fork
         "FidelityFX-SDK, each file checked against its SHA-256, under AMD's FSR SDK license:\n\n" +
         "https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/blob/7539ae8b6568ad29ed78a753404351daf3b5cca7/Kits/FidelityFX/docs/license.md\n\n" +
         "The license is saved beside the files (LICENSE-AMD-FSR-SDK.md), in the game folder.\n\nDownload AMD's files?";
+
+    /// What a built game folder lacks of the ticked upscalers: AMD FSR 4 without make_game.py's .hookshot_fsr mark, NVIDIA DLSS
+    /// when its hookshot_vk.dll was compiled without NVIDIA's SDK (copying the ngx folder's nvngx_dlss.dll in does not add DLSS).
+    /// Empty: nothing missing, the game plays as it is
+    public static List<string> Missing(string folder, bool fsr, bool dlss)
+    {
+        var missing = new List<string>();
+        try
+        {
+            if (fsr && !File.Exists(Path.Combine(folder, ".hookshot_fsr"))) missing.Add("AMD FSR 4");
+            if (dlss && !Contains(Path.Combine(folder, "hookshot_vk.dll"), "NVIDIA DLSS: NGX started")) missing.Add("NVIDIA DLSS");
+        }
+        catch (Exception) { }
+        return missing;
+    }
+
+    static readonly Dictionary<string, (DateTime When, bool Has)> seen = new();
+
+    /// The file has the ASCII text in it (the DLSS code's log line in the Vulkan back end); remembered per file and date
+    static bool Contains(string file, string text)
+    {
+        if (!File.Exists(file)) return false;
+        var when = File.GetLastWriteTimeUtc(file);
+        if (seen.TryGetValue(file, out var c) && c.When == when) return c.Has;
+        var bytes = File.ReadAllBytes(file);
+        var has = bytes.AsSpan().IndexOf(System.Text.Encoding.ASCII.GetBytes(text)) >= 0;
+        seen[file] = (when, has);
+        return has;
+    }
 }
