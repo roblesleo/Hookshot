@@ -73,8 +73,8 @@ static class Finder
 
     // ---- shortcuts to the built game ----
 
-    public static string DesktopLink => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Hookshot.lnk");
-    public static string StartLink => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Hookshot.lnk");
+    public static string DesktopLink => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Fork.On ? "Hookshot FSR.lnk" : "Hookshot.lnk");
+    public static string StartLink => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Fork.On ? "Hookshot FSR.lnk" : "Hookshot.lnk");
 
     /// Made or removed as the two ticks say (Windows' own shell object writes the .lnk)
     /// The shortcuts the player has, made again (onto the folder's launcher now that it has one); none made where there was none

@@ -13,7 +13,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Language = 'pt-BR',
     [switch]$Dlss,
-    [switch]$ToolsOnly   # (a test: the tools and the code fetched, no build)
+    [switch]$ToolsOnly   # (the tools, the code and AMD's (and with -Dlss NVIDIA's) files fetched, no build: what the fork's
+                         # HookshotBuilder.exe runs before it builds)
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -114,6 +115,13 @@ try {
     $src = Join-Path $Home2 'src'
     $zip = Join-Path $Home2 'src.zip'
     Get-File "https://github.com/$Repo/archive/refs/heads/$Branch.zip" $zip $null 0
+    $Linked = @('python', 'cpm', 'llvm-mingw', 'wgpu-native')
+    foreach ($n in $Linked) {   # (the links into the tools first, on their own: a recursive delete must never reach the tools)
+        $l = Join-Path $src $n
+        if ((Test-Path -LiteralPath $l) -and ((Get-Item -LiteralPath $l -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            [IO.Directory]::Delete($l)
+        }
+    }
     if (Test-Path -LiteralPath $src) { Remove-Item $src -Recurse -Force }
     $tmp = Join-Path $Home2 'unzip'
     if (Test-Path -LiteralPath $tmp) { Remove-Item $tmp -Recurse -Force }
@@ -130,7 +138,14 @@ try {
     New-Item -ItemType Directory -Force (Join-Path $src 'work') | Out-Null
     Copy-Item (Join-Path $tools 'work\*') (Join-Path $src 'work') -Recurse -Force
 
-    if ($ToolsOnly) { Say ("@@done ferramentas em " + $tools + ", código em " + $src); exit 0 }
+    # (the tools' Python, compiler and libraries linked into the code's folder, and the tools' release in its version.txt: the
+    # folder is then laid out as the official builder's tools folder, which the fork's HookshotBuilder.exe builds from)
+    foreach ($n in $Linked) {
+        $l = Join-Path $src $n
+        if (-not (Test-Path -LiteralPath $l)) { & cmd.exe /c mklink /J "$l" "$(Join-Path $tools $n)" | Out-Null }
+        if (-not (Test-Path -LiteralPath $l)) { Fail ("não foi possível ligar " + $n + " na pasta do código") }
+    }
+    Set-Content -LiteralPath (Join-Path $src 'version.txt') -Value $tag -Encoding ASCII
 
     # ---- 3. the build ----
     $env:RX_CPM = Join-Path $tools 'cpm'
@@ -164,6 +179,7 @@ try {
         }
         if (-not $ok) { Fail ("os arquivos do " + $f.Name + " não puderam ser baixados (a conexão caiu 6 vezes). Tente de novo mais tarde" + $(if ($f.Name -like '*DLSS*') { ", ou desmarque o DLSS" } else { "" })) }
     }
+    if ($ToolsOnly) { Say ("@@done ferramentas em " + $tools + ", código em " + $src); exit 0 }
     Say "@@stage Montando o jogo"
     $ErrorActionPreference = 'Continue'
     & $py @a 2>&1 | ForEach-Object {

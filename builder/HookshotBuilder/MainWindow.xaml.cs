@@ -47,7 +47,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        OutPath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Hookshot");
+        OutPath.Text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", Fork.On ? "Hookshot-FSR" : "Hookshot");   // (fork: never over the official game)
         LanguageBox.ItemsSource = Strings.All;
         LanguageBox.SelectedItem = lang;
         WorkerBox.ItemsSource = BuildWorkers.Choices(Environment.ProcessorCount);
@@ -64,7 +64,9 @@ public partial class MainWindow : Window
         };
         Loaded += (_, _) => Start();
         var tools = Tools.Find();
-        ToolsNote.Text = tools != null
+        ToolsNote.Text = Fork.On
+            ? $"Fork {Fork.Repo} (FSR 4, DLSS, 13 languages): each build fetches the official builder's tools (once, checked) and the fork's code."
+            : tools != null
             ? "Nothing else to install: Hookshot's own build tools are here, downloaded and checked by its setup."
             : "Hookshot's build tools are missing from its folder. Press Build and Hookshot offers to download them again.";
         SetStep(0);
@@ -691,6 +693,26 @@ public partial class MainWindow : Window
                 return;
         }
         SaveSettings();
+        if (Fork.On)   // (fork: the tools, the fork's code and AMD's and NVIDIA's files first)
+        {
+            BuildButton.IsEnabled = false;
+            BuildButton.Content = "Getting the tools and code…";
+            var lastLines = new List<string>();
+            forkPrep = new CancellationTokenSource();
+            var why = await Fork.Prepare(DlssTick.IsChecked == true, line => Dispatcher.BeginInvoke(() =>
+            {
+                FilesSub.Text = line;
+                lastLines.Add(line);
+            }), forkPrep.Token);
+            forkPrep = null;
+            if (why != null)
+            {
+                MessageBox.Show(this, why + "\n\n" + string.Join("\n", lastLines.Skip(Math.Max(0, lastLines.Count - 8))), "Hookshot");
+                RefreshMode();
+                return;
+            }
+            RefreshMode();
+        }
         var tools = Tools.Find();
         if (tools == null)
         {
@@ -714,6 +736,17 @@ public partial class MainWindow : Window
         "Its files stay on this PC (in the builder's ngx-sdk folder, and nvngx_dlss.dll in the game folder's ngx folder). " +
         "Hookshot never includes or shares them: never share a game folder built with them.\n\n" +
         "Do you accept NVIDIA's license?";
+
+    CancellationTokenSource? forkPrep;
+
+    /// (fork) The AMD FSR 4 tick: AMD's license first, and the tick stays only when it is accepted
+    void FsrChanged(object sender, RoutedEventArgs e)
+    {
+        if (FsrTick.IsChecked == true &&
+            MessageBox.Show(this, Fork.FsrLicense, "AMD FSR 4", MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+            FsrTick.IsChecked = false;
+        SaveSettings();
+    }
 
     /// The NVIDIA DLSS tick: NVIDIA's license first, and the tick stays only when it is accepted
     void DlssChanged(object sender, RoutedEventArgs e)
@@ -810,6 +843,8 @@ public partial class MainWindow : Window
         Tick();
         if (Storage.WorkChosen && !args.Contains("--work")) args.AddRange(new[] { "--work", Storage.Work });   // (the build files where the player chose)
         if (dlss && !args.Contains("--fetch-ngx-sdk")) args.AddRange(new[] { "--fetch-ngx-sdk", "--accept-nvidia-license" });
+        // (fork: AMD's FSR runtime into the game folder, in a build with FSR 4 (the tick, or an --update of a folder built with it))
+        if (Fork.On && !args.Contains("--fetch-fsr-runtime")) args.Add("--fetch-fsr-runtime");
         runner = new Runner(tools, args, workers, dlss ? Storage.NgxSdk : null);
         runner.Line += l => Dispatcher.BeginInvoke(() => Line(l));
         runner.Finished += failure => Dispatcher.BeginInvoke(() => Ended(failure));
@@ -1148,6 +1183,15 @@ public partial class MainWindow : Window
     /// The setup (HookshotBuilder-Setup.exe beside this app) checks every part against its checksum and downloads the missing ones
     void Repair(object sender, RoutedEventArgs e)
     {
+        if (Fork.On)   // (fork: the tools fetched again, all of them checked, at the next build)
+        {
+            foreach (var d in Directory.Exists(Fork.Home) ? Directory.GetDirectories(Fork.Home, "tools-*") : Array.Empty<string>())
+                try { File.Delete(System.IO.Path.Combine(d, ".ready")); } catch (Exception) { }
+            MessageBox.Show(this, "Press Build again: Hookshot downloads its tools again and checks each one.", "Hookshot");
+            ShowPage(FilesPage);
+            RefreshMode();
+            return;
+        }
         var setup = System.IO.Path.Combine(AppContext.BaseDirectory, "HookshotBuilder-Setup.exe");
         if (File.Exists(setup))
         {
@@ -1229,6 +1273,7 @@ public partial class MainWindow : Window
     {
         if (runner != null && MessageBox.Show(this, T(S.CloseQuestion), "Hookshot", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
         runner?.Cancel();
+        forkPrep?.Cancel();
         Close();
     }
 }

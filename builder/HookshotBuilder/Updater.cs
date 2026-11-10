@@ -37,6 +37,8 @@ static class Updater
     /// The latest release's tag, quietly (null: GitHub did not answer); a few tries, 20 s at most
     public static async Task<string?> LatestTag()
     {
+        // (fork: no official release replaces it. Its newest is this builder's own tools; each build fetches the fork's code anew)
+        if (Fork.On) return Tools.Find()?.Version;
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("HookshotBuilder");
         for (var attempt = 0; attempt < 3; attempt++)
@@ -107,6 +109,18 @@ static class Updater
     /// installed it (it starts the new builder with --update folder --tag t --fetched)
     public static async void UpdateFolder(MainWindow w, string folder, string? tag, bool fetched)
     {
+        if (Fork.On)   // (fork: the fork's code and the tools again, then the folder built again: never the official release)
+        {
+            w.BeginUpdate(folder, null);
+            var why = await Fork.Prepare(Directory.Exists(Storage.NgxSdk), line => w.Dispatcher.BeginInvoke(() => w.Note(line)), w.DownloadToken);
+            if (why != null || Tools.Find() is not { } forkTools)
+            {
+                w.DownloadFailed(why ?? "The Hookshot tools were not found.");
+                return;
+            }
+            w.UpdateBuild(forkTools, folder);
+            return;
+        }
         w.BeginUpdate(folder, tag);
         var tools = Tools.Find();
         if (tools == null)

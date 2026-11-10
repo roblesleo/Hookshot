@@ -11,6 +11,9 @@ sealed record Tools(string Root, string Python, string[]? PythonArgs = null)
 
     public static Tools? Find()
     {
+        // (fork: the fork's code with the official tools linked in, Fork.Prepare's output)
+        if (Fork.On && File.Exists(Path.Combine(Fork.Src, "nx2", "make_game.py")) && File.Exists(Path.Combine(Fork.Src, "python", "python.exe")))
+            return new Tools(Fork.Src, Path.Combine(Fork.Src, "python", "python.exe"));
         var at = AppContext.BaseDirectory;
         var bundled = Path.Combine(at, "tools");
         if (File.Exists(Path.Combine(bundled, "nx2", "make_game.py")))
@@ -98,6 +101,7 @@ sealed class Runner
         // (NVIDIA DLSS: only when ticked. Without it, one set on the PC is not passed on either: a build is with DLSS only when asked)
         if (ngxSdk != null) si.Environment["HOOKSHOT_NGX_SDK"] = ngxSdk;
         else si.Environment.Remove("HOOKSHOT_NGX_SDK");
+        if (Fork.On) si.Environment["HOOKSHOT_FFX_SDK"] = Fork.FfxSdk;   // (fork: AMD's FSR runtime, fetched by Fork.Prepare)
         // (the folder's own compiler, headers and libraries, when it has them: nothing of the PC's but Windows' own)
         var sets = new[] { ("EMSDK", "emsdk"), ("RX_CPM", "cpm"), ("WGPU_NATIVE", "wgpu-native") };
         foreach (var (name, folder) in sets)
