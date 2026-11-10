@@ -146,7 +146,27 @@ try {
         Remove-Item Env:HOOKSHOT_NGX_SDK -ErrorAction SilentlyContinue
     }
     Set-Location $src
-    & (Join-Path $tools 'python\python.exe') @a 2>&1 | ForEach-Object {
+    $py = Join-Path $tools 'python\python.exe'
+    # (NVIDIA's and AMD's files first, on their own: GitHub cuts a download off now and then (WinError 10054), and the
+    # scripts keep each file already fetched whole, so each try goes on from where the last stopped. make_game.py then finds
+    # them all there and downloads nothing)
+    $fetches = @(@{ Name = "AMD FSR"; Args = @('-I', 'scripts\ffx_sdk.py', $env:HOOKSHOT_FFX_SDK) })
+    if ($Dlss) { $fetches += @{ Name = "NVIDIA DLSS"; Args = @('-I', 'scripts\ngx_sdk.py', $env:HOOKSHOT_NGX_SDK, '--accept-nvidia-license') } }
+    foreach ($f in $fetches) {
+        Say ("@@stage Baixando os arquivos do " + $f.Name)
+        $ok = $false
+        for ($try = 1; $try -le 6 -and -not $ok; $try++) {
+            if ($try -gt 1) { Say ("  (a conexão caiu: tentando de novo, " + $try + " de 6)"); Start-Sleep -Seconds (3 * $try) }
+            $ErrorActionPreference = 'Continue'   # (a line on stderr is not a failure: the exit code says)
+            & $py @($f.Args) 2>&1 | ForEach-Object { Say ([string]$_) }
+            $ok = ($LASTEXITCODE -eq 0)
+            $ErrorActionPreference = 'Stop'
+        }
+        if (-not $ok) { Fail ("os arquivos do " + $f.Name + " não puderam ser baixados (a conexão caiu 6 vezes). Tente de novo mais tarde" + $(if ($f.Name -like '*DLSS*') { ", ou desmarque o DLSS" } else { "" })) }
+    }
+    Say "@@stage Montando o jogo"
+    $ErrorActionPreference = 'Continue'
+    & $py @a 2>&1 | ForEach-Object {
         $l = [string]$_
         if ($l -match '^@@progress ([0-9.]+)') { $l = "@@progress " + ([string][math]::Round(0.15 + 0.85 * [double]$Matches[1], 3)).Replace(',', '.') }
         Say $l
