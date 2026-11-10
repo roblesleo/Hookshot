@@ -9,7 +9,7 @@
     <AssemblyName>HookshotBuilder</AssemblyName>
     <RootNamespace>HookshotBuilder</RootNamespace>
     <Version>0.1.0</Version>
-    <Product>Hookshot Builder</Product>
+    <Product>Hookshot Builder (fork: FSR 4, DLSS)</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <ApplicationIcon Condition="Exists('..\..\work\hookshot.ico')">..\..\work\hookshot.ico</ApplicationIcon>
@@ -29,6 +29,11 @@
     <Resource Include="Fonts\*.ttf" />
     <Resource Include="Images\hookshot.png" />
     <None Include="Fonts\Inter-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- (fork) the worker that fetches the tools, the fork's code and AMD's and NVIDIA's files before a build (Fork.cs) -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\fsr-builder\Montar-Hookshot-worker.ps1" LogicalName="HookshotBuilder.Montar-Hookshot-worker.ps1" />
   </ItemGroup>
 
 </Project>

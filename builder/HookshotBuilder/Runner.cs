@@ -18,6 +18,9 @@ sealed record Tools(string Root, string Python, string[]? PythonArgs = null)
 
     public static Tools? Find()
     {
+        // (fork: the fork's code with the official tools linked in, Fork.Prepare's output)
+        if (Fork.On && File.Exists(Path.Combine(Fork.Src, "nx2", "make_game.py")) && File.Exists(Path.Combine(Fork.Src, "python", "python.exe")))
+            return new Tools(Fork.Src, Path.Combine(Fork.Src, "python", "python.exe"));
         var at = AppContext.BaseDirectory;
         var bundled = Path.Combine(at, "tools");
         if (File.Exists(Path.Combine(bundled, "nx2", "make_game.py")))

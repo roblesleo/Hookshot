@@ -47,7 +47,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        OutPath.Text = BuilderHome.DefaultGame;
+        OutPath.Text = Fork.On   // (fork: never over the official game)
+            ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Games", "Hookshot-FSR")
+            : BuilderHome.DefaultGame;
         if (BuilderHome.Portable) DesktopTick.IsChecked = StartTick.IsChecked = false;
         LanguageBox.ItemsSource = Strings.All;
         LanguageBox.SelectedItem = lang;
@@ -70,7 +72,9 @@ public partial class MainWindow : Window
         };
         Loaded += (_, _) => Start();
         var tools = Tools.Find();
-        ToolsNote.Text = tools != null
+        ToolsNote.Text = Fork.On
+            ? $"Fork {Fork.Repo} (FSR 4, DLSS, 13 languages): each build fetches the official builder's tools (once, checked) and the fork's code."
+            : tools != null
             ? "Nothing else to install: Hookshot's own build tools are here, downloaded and checked by its setup."
             : "Hookshot's build tools are missing from its folder. Press Build and Hookshot offers to download them again.";
         SetStep(0);
@@ -868,6 +872,26 @@ public partial class MainWindow : Window
                 return;
         }
         SaveSettings();
+        if (Fork.On)   // (fork: the tools, the fork's code and AMD's and NVIDIA's files first)
+        {
+            BuildButton.IsEnabled = false;
+            BuildButton.Content = "Getting the tools and code…";
+            var lastLines = new List<string>();
+            forkPrep = new CancellationTokenSource();
+            var why = await Fork.Prepare(DlssTick.IsChecked == true, FsrTick.IsChecked == true && fsrLicense, line => Dispatcher.BeginInvoke(() =>
+            {
+                FilesSub.Text = line;
+                lastLines.Add(line);
+            }), forkPrep.Token);
+            forkPrep = null;
+            if (why != null)
+            {
+                MessageBox.Show(this, why + "\n\n" + string.Join("\n", lastLines.Skip(Math.Max(0, lastLines.Count - 8))), "Hookshot");
+                RefreshMode();
+                return;
+            }
+            RefreshMode();
+        }
         var tools = Tools.Find();
         if (tools == null)
         {
@@ -892,6 +916,8 @@ public partial class MainWindow : Window
         "Its files stay on this PC (in the builder's ngx-sdk folder, and nvngx_dlss.dll in the game folder's ngx folder). " +
         "Hookshot never includes or shares them: never share a game folder built with them.\n\n" +
         "Do you accept NVIDIA's license?";
+
+    CancellationTokenSource? forkPrep;
 
     /// The NVIDIA DLSS tick: NVIDIA's license first, and the tick stays only when it is accepted
     void DlssChanged(object sender, RoutedEventArgs e)
@@ -1357,6 +1383,15 @@ public partial class MainWindow : Window
     /// The setup (HookshotBuilder-Setup.exe beside this app) checks every part against its checksum and downloads the missing ones
     void Repair(object sender, RoutedEventArgs e)
     {
+        if (Fork.On)   // (fork: the tools fetched again, all of them checked, at the next build)
+        {
+            foreach (var d in Directory.Exists(Fork.Home) ? Directory.GetDirectories(Fork.Home, "tools-*") : Array.Empty<string>())
+                try { File.Delete(System.IO.Path.Combine(d, ".ready")); } catch (Exception) { }
+            MessageBox.Show(this, "Press Build again: Hookshot downloads its tools again and checks each one.", "Hookshot");
+            ShowPage(FilesPage);
+            RefreshMode();
+            return;
+        }
         var setup = System.IO.Path.Combine(AppContext.BaseDirectory, "HookshotBuilder-Setup.exe");
         if (File.Exists(setup))
         {
@@ -1447,6 +1482,7 @@ public partial class MainWindow : Window
     {
         if (runner != null && MessageBox.Show(this, T(S.CloseQuestion), "Hookshot", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
         runner?.Cancel();
+        forkPrep?.Cancel();
         Close();
     }
 }
