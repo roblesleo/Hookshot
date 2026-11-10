@@ -18,7 +18,7 @@ function Find-Nups {
     $found = @()
     foreach ($d in @("$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop", "$env:USERPROFILE\Documents")) {
         # (-Filter *.nup also matches .nupkg, as Windows' own filter does: the extension is checked exactly)
-        if (Test-Path $d) { $found += Get-ChildItem $d -Filter *.nup -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -ieq '.nup' } }
+        if (Test-Path -LiteralPath $d) { $found += Get-ChildItem $d -Filter *.nup -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -ieq '.nup' } }
     }
     return $found | Sort-Object LastWriteTime -Descending
 }
@@ -119,7 +119,7 @@ $script:readAt = 0
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 400
 $timer.Add_Tick({
-    if (Test-Path $script:outFile) {
+    if (Test-Path -LiteralPath $script:outFile) {
         try {
             $fs = [IO.File]::Open($script:outFile, 'Open', 'Read', 'ReadWrite')
             $fs.Seek($script:readAt, 'Begin') | Out-Null
@@ -143,18 +143,18 @@ $timer.Add_Tick({
         $timer.Stop()
         $go.Enabled = $true
         $err = Join-Path $Home2 'montar-erros.txt'
-        if ($script:proc.ExitCode -ne 0 -and (Test-Path $err)) { Get-Content $err -Tail 15 | ForEach-Object { Say $_ } }
+        if ($script:proc.ExitCode -ne 0 -and (Test-Path -LiteralPath $err)) { Get-Content $err -Tail 15 | ForEach-Object { Say $_ } }
     }
 })
 
 $play.Add_Click({
     $exe = Join-Path $out.Text 'hookshot.exe'
-    if (-not (Test-Path $exe)) { $exe = Join-Path $out.Text 'bin\hookshot.exe' }
-    if (Test-Path $exe) { Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) }
+    if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $out.Text 'bin\hookshot.exe' }
+    if (Test-Path -LiteralPath $exe) { Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) }
 })
 
 $go.Add_Click({
-    if (-not $nup.Text -or -not (Test-Path $nup.Text)) {
+    if (-not $nup.Text -or -not (Test-Path -LiteralPath $nup.Text)) {
         [Windows.Forms.MessageBox]::Show('Escolha o .nup do seu jogo.', 'Falta o jogo') | Out-Null
         return
     }
