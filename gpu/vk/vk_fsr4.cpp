@@ -33,6 +33,8 @@
 
 #include "vk_paths.h"
 #include "vk_texture.h"
+#include "fsr4_models.h"   // (fork: the FSR 4 model row)
+#include "vk_menu.h"
 
 #include "api/include/ffx_api.h"
 #include "api/include/ffx_api_types.h"
@@ -82,6 +84,7 @@ struct Library {
     PfnFfxDispatch dispatch = nullptr;
     uint64_t version_id = 0;
     VkDeviceContext device_context{};
+    int model = -1;   // (fork: the FSR 4 model row's value version_id was taken for)
 };
 // (lib() and st() are never destroyed: Hookshot leaves through ExitProcess / exit() with the device alive, and a destructor
 // then would call into AMD's library after its DLL_PROCESS_DETACH, or under a render thread still recording with it)
@@ -153,6 +156,8 @@ void* symbol(const char* name) {
 #endif
 }
 
+bool pick_version(int model);
+int wanted_model();
 /// AMD's library on this device, once: false when FSR 4 cannot run here (g_why says why, the log too)
 bool load() {
     Library& l = lib();
@@ -169,6 +174,7 @@ bool load() {
 #ifdef _WIN32
         const std::string path = dir + "\\" + kLoader;
         if (GetFileAttributesA(path.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+        logf("vk: AMD FSR 4: %s", fsr4_models::prepare(dir).c_str());   // (fork: before the loader asks the models anything)
         // (the upscaler DLL the loader picks lies beside it: the loader's folder first in the search)
         l.lib = LoadLibraryExA(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
         // (there but not loaded: a DLL it needs missing, a bad signature, or a relative RX_VK_FSR_DIR, which the search
@@ -198,6 +204,32 @@ bool load() {
         return no(FSR_NO_LIBRARY);
     }
     l.device_context = VkDeviceContext{dev.device, dev.physical, vkGetDeviceProcAddr};
+    if (!pick_version(wanted_model())) return no(FSR_NO_MODEL);
+    l.ok = true;
+    g_why = FSR_OK;
+    return true;
+}
+
+/// (fork) The FSR 4 model row's value (opts.fsr4_model), RX_VK_FSR4_MODEL=auto|int8|rdna2|lite (or 0 to 3) over it
+int wanted_model() {
+    static const int env = [] {
+        const char* e = getenv("RX_VK_FSR4_MODEL");
+        if (!e || !*e) return -1;
+        if (!strcmp(e, "auto")) return 0;
+        if (!strcmp(e, "int8")) return 1;
+        if (!strcmp(e, "rdna2")) return 2;
+        if (!strcmp(e, "lite")) return 3;
+        return std::clamp(atoi(e), 0, (int)fsr4_models::kModels - 1);
+    }();
+    return env >= 0 ? env : std::clamp(opts.fsr4_model, 0, (int)fsr4_models::kModels - 1);
+}
+
+/// The newest 4.x AMD's library offers for the model asked for (fork: a model row's choice makes that model say yes; with
+/// Auto, AMD's own answers, and INT8 Lite where they offer no FSR 4 at all). false: no FSR 4 here
+bool pick_version(int model) {
+    Library& l = lib();
+    l.version_id = 0, l.model = model;
+    fsr4_models::g_forced = fsr4_models::forced_class(model);
     // (the library lists every upscaler this device can run: the newest 4.x is taken explicitly, so an FSR 3.1 provider never
     // stands in silently)
     ffxQueryDescGetVersions versions{};
@@ -208,7 +240,7 @@ bool load() {
     versions.outputCount = &count;
     if (l.query(nullptr, &versions.header) != FFX_API_RETURN_OK || !count) {
         logf("vk: AMD FSR 4: AMD's library lists no upscaler for this GPU");
-        return no(FSR_NO_MODEL);
+        return false;
     }
     std::vector<uint64_t> ids(count);
     std::vector<const char*> names(count);
@@ -216,7 +248,7 @@ bool load() {
     versions.versionNames = names.data();
     if (l.query(nullptr, &versions.header) != FFX_API_RETURN_OK) {
         logf("vk: AMD FSR 4: the upscalers could not be listed");
-        return no(FSR_NO_MODEL);
+        return false;
     }
     std::string listed;
     unsigned best[3] = {0, 0, 0};
@@ -231,13 +263,19 @@ bool load() {
             l.version_id = ids[i];
         }
     }
+    if (!l.version_id && model == fsr4_models::AUTO && fsr4_models::g_hooked) {
+        logf("vk: AMD FSR 4: AMD offers no FSR 4 model for this GPU (it has: %s): INT8 Lite, the FSR 4 model row's Auto",
+             listed.c_str());
+        const bool ok = pick_version(fsr4_models::INT8_LITE);
+        l.model = fsr4_models::AUTO;
+        return ok;
+    }
     if (!l.version_id) {
         logf("vk: AMD FSR 4: no FSR 4 for this GPU (AMD's library has: %s)", listed.c_str());
-        return no(FSR_NO_MODEL);
+        return false;
     }
-    logf("vk: AMD FSR 4: upscalers %s; using %u.%u.%u", listed.c_str(), best[0], best[1], best[2]);
-    l.ok = true;
-    g_why = FSR_OK;
+    logf("vk: AMD FSR 4: upscalers %s; using %u.%u.%u (model: %s)", listed.c_str(), best[0], best[1], best[2],
+         fsr4_models::label(model));
     return true;
 }
 
@@ -357,6 +395,15 @@ void release() {
 int prepare(VkCommandBuffer, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh, uint32_t* in_w, uint32_t* in_h, const char** why) {
     State& s = st();
     int made = 1;
+    {   // (fork: another FSR 4 model chosen: its version again, and a context of its own)
+        Library& l = lib();
+        const int want = wanted_model();
+        if (fsr4_models::g_hooked && want != l.model) {
+            std::lock_guard lk(l.mu);
+            release();
+            if (!pick_version(want)) return *why = "the FSR 4 model chosen is not offered", -1;
+        }
+    }
     if (!s.context || s.context->width != ow || s.context->height != oh) {
         release();
         s.context = make_context(ow, oh);

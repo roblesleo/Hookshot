@@ -45,6 +45,7 @@
 #include "upscaler_rows.h"
 #include "menu_restart.h"
 #include "vk_menu_i18n.h"
+#include "fsr4_models.h"   // (fork: the FSR 4 model row)
 #ifndef HOOKSHOT_VERSION   // (nx2/build.py gives it to this file: nx2/version.py)
 #define HOOKSHOT_VERSION "unknown"
 #endif
@@ -259,6 +260,21 @@ const char* hn_dlss_model(int v, int variant) {
     if (variant == 1) return unused;
     if (variant == 2) return env;
     return variant == 0 ? t[std::clamp(v, 0, ur::kModels - 1)] : nullptr;
+}
+/// (fork) The FSR 4 model row (opts.fsr4_model, fsr4_models.h)
+const char* tx_fsr4_model(int v) {
+    static const char* const t[] = {"Auto (AMD's choice)", "INT8", "INT8 RDNA2", "INT8 Lite"};
+    return t[std::clamp(v, 0, 3)];
+}
+const char* hn_fsr4_model(int v, int variant) {
+    static const char* const t[] = {
+        "AMD's pick for this GPU; INT8 Lite where AMD offers no FSR 4 (NVIDIA and Intel GPUs, some Ryzen APUs).",
+        "FSR 4's INT8 network, made for Radeon RX 7000. On other GPUs it costs more GPU time than INT8 Lite.",
+        "FSR 4's INT8 network made for Radeon RX 6000.",
+        "FSR 4's light INT8 network, made for handhelds and APUs: the fastest FSR 4.",
+    };
+    if (variant > 0) return nullptr;
+    return t[std::clamp(v, 0, 3)];
 }
 /// The Game language row (opts.game_lang): language.txt's language, written when it changes; the game reads it at its start
 const char* tx_game_lang(int v) { return i18n::game_lang_name(v); }
@@ -643,6 +659,8 @@ Row rows[] = {
      hn_upscaler},
     {TAB_GRAPHICS, "DLSS model", &opts.dlss_model, 0, ur::kModels - 1, 1, tx_dlss_model,
      "Which of NVIDIA's DLSS networks draws the picture.", hn_dlss_model, false, true},
+    {TAB_GRAPHICS, "FSR 4 model", &opts.fsr4_model, 0, 3, 1, tx_fsr4_model, "Which of AMD FSR 4's networks draws the picture.",
+     hn_fsr4_model, false, true},   // (fork)
     {TAB_GRAPHICS, "Render resolution", &opts.resolution, 0, ur::kValues - 1, 1, tx_resolution,
      "The share of the output the 3D is drawn at; the Upscaler fills in the rest.", hn_resolution},
     {TAB_GRAPHICS, "Window scaling filter", &opts.upscale, 0, 2, 1, tx_filter,
@@ -989,7 +1007,9 @@ int ask_sel = 0;   // (the restart question's choice: 0 Later, 1 Restart now)
 bool row_shown(int i) {
     return (rows[i].cheat < 0 || cheats_on()) &&
            (rows[i].value != &opts.dlss || ur::upscaler_shown(dlss_built() || fsr4_built(), fsr3::supported())) &&
-           (rows[i].value != &opts.dlss_model || ur::model_shown(dlss_built()));
+           (rows[i].value != &opts.dlss_model || ur::model_shown(dlss_built())) &&
+           // (fork: the FSR 4 model row while FSR 4 draws, where its upscaler library is the one whose models can be chosen)
+           (rows[i].value != &opts.fsr4_model || (fsr4_models::g_hooked && ur::is_fsr4(upscaler())));
 }
 int tab_row_count(int t) {
     int c = 0;
