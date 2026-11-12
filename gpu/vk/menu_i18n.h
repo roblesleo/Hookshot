@@ -7028,19 +7028,19 @@ inline constexpr Entry kzh_Hant[] = {
 };
 inline constexpr Lang kLangs[] = {
     {"en", "English", nullptr, 0},
-    {"pt-BR", "Português (Brasil)", kpt_BR, 526},
-    {"es-419", "Español (Latinoamérica)", kes_419, 532},
-    {"es", "Español (España)", kes, 534},
-    {"fr", "Français", kfr, 529},
-    {"de", "Deutsch", kde, 524},
-    {"it", "Italiano", kit, 527},
-    {"nl", "Nederlands", knl, 518},
-    {"pl", "Polski", kpl, 527},
-    {"ru", "Русский", kru, 540},
-    {"ja", "日本語", kja, 533},
-    {"ko", "한국어", kko, 538},
-    {"zh-Hans", "简体中文", kzh_Hans, 533},
-    {"zh-Hant", "繁體中文", kzh_Hant, 533},
+    {"pt-BR", "Português (Brasil)", kpt_BR, 533},
+    {"es-419", "Español (Latinoamérica)", kes_419, 539},
+    {"es", "Español (España)", kes, 541},
+    {"fr", "Français", kfr, 536},
+    {"de", "Deutsch", kde, 531},
+    {"it", "Italiano", kit, 534},
+    {"nl", "Nederlands", knl, 525},
+    {"pl", "Polski", kpl, 534},
+    {"ru", "Русский", kru, 547},
+    {"ja", "日本語", kja, 540},
+    {"ko", "한국어", kko, 545},
+    {"zh-Hans", "简体中文", kzh_Hans, 540},
+    {"zh-Hant", "繁體中文", kzh_Hant, 540},
 };
 inline constexpr int kLangCount = sizeof kLangs / sizeof kLangs[0];
 }  // namespace mkwvk::menu_i18n
