@@ -49,6 +49,7 @@
 #include "host_shaders/bc_encoder_comp_spv.h"
 #include "bc_levels.h"
 #include "astc_bc_policy.h"
+#include "astc_alpha.h"
 #include "vram_compact.h"
 #include "evict_reason.h"
 #include "keep_rendered.h"
@@ -976,6 +977,24 @@ bool upload_astc_gpu(Texture& tex, uint64_t total, const Ranges* dirty) {
         std::memcpy(s.data + k * tail, guest_bytes(tex.gpu + at, n, scratch), n);
     }
     const uint64_t staged = tail * layers.size();
+    // (fork) RX_VK_ASTC_ALPHA_STATS=1: how much of the ASTC kept as BC3 has no alpha at all (could be BC1, half the size)
+    static const bool alpha_stats = env_on("RX_VK_ASTC_ALPHA_STATS");
+    if (alpha_stats && tex.bc) {
+        static std::mutex mu;
+        static uint64_t n_tex, n_opaque, b_all, b_opaque;
+        const uint64_t with = astc_alpha::count(s.data, staged), blocks = staged / 16;
+        const uint64_t part = tex.bytes * layers.size() / std::max(1u, tex.layers);
+        std::lock_guard<std::mutex> lk(mu);
+        n_tex++, b_all += part;
+        if (!with) n_opaque++, b_opaque += part;
+        if (part >= (4ull << 20) || (n_tex & (n_tex - 1)) == 0)
+            logf("vk: alpha stats: texture %#llx %ux%u x%u (%u of its layers, ASTC %dx%d, %llu MB as BC3): %llu of %llu blocks "
+                 "with alpha; so far %llu uploads, %llu MB as BC3, %llu without alpha, %llu MB",
+                 (unsigned long long)tex.gpu, tex.width, tex.height, tex.layers, (unsigned)layers.size(), (int)tex.block_w,
+                 (int)tex.block_h, (unsigned long long)(part >> 20), (unsigned long long)with, (unsigned long long)blocks,
+                 (unsigned long long)n_tex, (unsigned long long)(b_all >> 20), (unsigned long long)n_opaque,
+                 (unsigned long long)(b_opaque >> 20));
+    }
     flush_mapped_range(s.allocation, s.offset, staged);   // (encoded blocks read by the GPU decoder, not necessarily coherent)
     st_bytes += (int64_t)staged;
     VkCommandBuffer cmd = upload_cmd();
