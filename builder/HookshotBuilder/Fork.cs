@@ -78,5 +78,4 @@ static class Fork
             return p.ExitCode == 0 ? null : error ?? $"the preparation stopped (code {p.ExitCode})";
         }, CancellationToken.None);
     }
-
 }
