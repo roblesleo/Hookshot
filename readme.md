@@ -285,30 +285,36 @@ A row for something this PC cannot use is not shown: NVIDIA Reflex and AMD Anti-
 have them, the DLSS model where DLSS does not run. HDR paper white and
 HDR peak brightness show only while HDR is on, the HDR tone mapper only with HDR set to Native.
 
+The Graphics tab groups its rows under section titles: Resolution and upscaling, Frame generation and latency, Screen,
+HDR, Detail, and GPU and memory (last: the rows to change when something is wrong). The table lists them in that order.
+
 | Tab | Option | Choices | Default |
 |---|---|---|---|
 | Graphics | Quality preset | Custom, Minimum (4GB), Low (6GB), Balanced (8GB), High (12GB), Ultra (16GB+) | Custom |
-| | Fullscreen | Off, On (the same as <kbd>F11</kbd>) | Off |
-| | GPU device | Auto, or each graphics card by name (after a restart) | Auto |
-| | Frame generation | Off, Auto, 2x to 8x | Off |
-| | Frame pacing | Off, On | Off |
-| | V-Sync | Auto, On, Off | Auto |
-| | HDR | Off, Expanded, Native (the game's) | Off |
-| | HDR paper white | 80 to 400 nits (while HDR is on) | 200 nits |
-| | HDR peak brightness | 400 to 4000 nits (while HDR is on) | 1000 nits |
-| | HDR tone mapper | Vanilla (the game's curve), PsychoV35 (RenoDX's; with HDR set to Native. DLSS, FSR and TAAU do not take its scene yet: the game's own upscale runs) | Vanilla |
-| | Game frame rate cap | 60, 90, 120, 144, 165, 240 FPS, Uncapped (after a restart) | 60 FPS |
-| | NVIDIA Reflex | Off, On, On + Boost (shown only on NVIDIA GPUs with `VK_NV_low_latency2`) | Off |
-| | AMD Anti-Lag 2 | Off, On (shown only on AMD GPUs with `VK_AMD_anti_lag`) | Off |
 | | Output resolution | 1920x1080, 2048x1152, 2560x1440, 3840x2160, 5120x1440, 5120x2880 (after a restart) | 2048x1152 |
+| | Profile | Docked, Handheld (after a restart) | Docked |
 | | Upscaler | Game's own, NVIDIA DLSS, NVIDIA DLAA (only in builds with NVIDIA's DLSS SDK, below; DLSS and DLAA on RTX GPUs), AMD FSR 3.1 (every build, on GPUs it runs on, below), AMD FSR 4, AMD FSR 4 Native AA (only in builds with FSR 4, below), Off (no upscaling) | Game's own |
 | | DLSS model | Transformer (K), Transformer 2 (M), Transformer 2 (L), NVIDIA default (shown where DLSS runs; used by DLSS and DLAA) | Transformer (K) |
 | | Render resolution | Auto (the game's own dynamic resolution), 100%, 75%, 67%, 50% (each with its size). With DLSS, FSR 3.1 or FSR 4: Auto, Quality (67%), Balanced (58%), Performance (50%), Ultra Performance (33%). With DLAA or FSR 4 Native AA: Native. With Off: Auto, 100%, 75%, 67%, 50%, 33% | Auto |
-| | Window scaling filter | Off, Catmull-Rom, Lanczos | Off |
 | | Sharpness | 0 to 100%, in steps of 10 | 0% |
+| | Frame generation | Off, Auto, 2x to 8x | Off |
+| | Frame generation by | Auto (NVIDIA DLSS Frame Generation where it runs: RTX 40 and newer, with a temporal Upscaler; else the built-in one), Built-in (changes at once) | Auto |
+| | Frame pacing | Off, On | Off |
+| | Game frame rate cap | 60, 90, 120, 144, 165, 240 FPS, Uncapped (after a restart) | 60 FPS |
+| | NVIDIA Reflex | Off, On, On + Boost (shown only on NVIDIA GPUs with `VK_NV_low_latency2`) | Off |
+| | AMD Anti-Lag 2 | Off, On (shown only on AMD GPUs with `VK_AMD_anti_lag`) | Off |
+| | Fullscreen | Off, On (the same as <kbd>F11</kbd>) | Off |
+| | V-Sync | Auto, On, Off | Auto |
+| | Window scaling filter | Off, Catmull-Rom, Lanczos | Off |
+| | Aspect ratio | 16:9, Monitor's shape: wider than 16:9, or narrower down to 5:4 (after a restart) | Monitor's shape |
+| | HDR | Off, Expanded, Native (the game's) | Off |
+| | HDR paper white | 80 to 400 nits (while HDR is on) | 200 nits |
+| | HDR peak brightness | 400 to 4000 nits (while HDR is on) | 1000 nits |
+| | HDR contrast | 50% to 200% around mid grey (while HDR is on) | 100% |
+| | HDR tone mapper | Vanilla (the game's curve), PsychoV35 (RenoDX's; with HDR set to Native. DLSS, FSR and TAAU do not take its scene yet: the game's own upscale runs) | Vanilla |
 | | Anisotropic filtering | Game's, 2x, 4x, 8x, 16x | 16x |
-| | Profile | Docked, Handheld (after a restart) | Docked |
-| | Ultrawide | Off (16:9), Monitor's shape: wider than 16:9, or narrower down to 5:4 (after a restart) | Off (16:9) |
+| | GPU device | Auto, or each graphics card by name (after a restart) | Auto |
+| | VRAM budget | Auto, 3.6, 4.8, 6, 7.5, 9, 11 GB (2.2 GB only from the Minimum (4GB) preset); a quality preset sets it | Auto |
 | Audio | Volume | 0 to 100%, in steps of 5 | 100% |
 | | Mute in background | Off, On | Off |
 | | Audio output | Auto, Stereo, 5.1 (after a restart) | Auto |
@@ -316,6 +322,7 @@ HDR peak brightness show only while HDR is on, the HDR tone mapper only with HDR
 | | FPS counter position | Top right, Top left, Bottom right, Bottom left | Top right |
 | | Menu size | Small, Medium, Large | Medium |
 | | Game speed | Per frame, Real time | Real time |
+| | Field of view | 50% to 150%, in steps of 5; applies immediately during gameplay | 100% (original) |
 | | Text speed | Normal, 2x, 4x, Instant | Normal |
 | | Text size | Original, 110%, 125%, 150%, 175% (dialogue, Navi and signs) | Original |
 | | Microphone | Off, Default, or each microphone by name | Default |
@@ -347,6 +354,10 @@ HDR peak brightness show only while HDR is on, the HDR tone mapper only with HDR
   rows yourself sets it back to Custom.
 - **Menu size** is how large the menu, the FPS counter and the start-up screen are drawn: Medium unless you choose Small
   (a desk) or Large (a TV across the room). It stays the same whether you use a controller or the keyboard and mouse.
+- **Field of view** changes the gameplay camera's vertical angle: 100% keeps the game's view, higher shows more of the
+  world and lower brings it closer. The game's zoom changes remain relative to your choice.
+  Aiming has been tested in the 50% to 150% range, including with ultrawide enabled.
+  Cutscenes, the HUD and movies keep their own view. The setting is saved as `field_of_view` in `hookshot_options.ini`.
 - **GPU device** matters on a PC with more than one graphics card (a laptop's integrated and dedicated GPUs, or a
   second card for Lossless Scaling). Auto prefers a dedicated one, and only cards with Vulkan 1.3 are listed.
   `hookshot_log.txt` lists every card as `vk: device <n>`; `RX_VK_DEVICE=<n>` chooses one for a single run and wins
@@ -375,14 +386,16 @@ HDR peak brightness show only while HDR is on, the HDR tone mapper only with HDR
 - **Output resolution:** its rows below show the sizes for the output you chose. Docked only. On a 1920x1080 display,
   the 1920x1080 option keeps HUD and text sharp when the game fills the screen by mapping them pixel for pixel. At
   3840x2160 the game's render targets get a bigger GPU pool, so a full-size 3D fits. On a 5120x1440 (32:9) ultrawide
-  monitor, 5120x1440 gives a native frame with a sharp HUD. Set **Ultrawide** to Monitor's shape with it: it widens the
-  cameras to the frame's shape and keeps the HUD and movies in the middle 16:9; without it, the game's 16:9 picture is
-  stretched across the 32:9 output, sharp but wide. For a size the menu does not offer (3440x1440, 2560x1080, ...), set
+  monitor, 5120x1440 gives a native frame with a sharp HUD. The **Aspect ratio**'s default, Monitor's shape, widens the
+  cameras to the frame's shape and keeps the HUD and movies in the middle 16:9; at 16:9, the game's 16:9 picture is
+  stretched across the 32:9 output, sharp but wide. Options saved by an older version at 16:9, the default then, move to
+  Monitor's shape on a screen narrower than 16:9 (16:10 such as the Steam Deck's, or 4:3), where 16:9 only adds bars above
+  and below; an ultrawide keeps its 16:9. For a size the menu does not offer (3440x1440, 2560x1080, ...), set
   `output_res=<width>x<height>` in `hookshot_options.ini`: each side a multiple of 8, at least 640x360, at most 5120x2880's
   pixels, and between 5:4 and 48:9 in shape; anything else uses the game's 2048x1152. The menu then offers it as its own
-  choice. With **Ultrawide** on, a picture wider than 16:9 is kept to 5120x2160's pixels, so above that a wide size is not a
-  native frame. A custom output wider than 32:9 also sets the camera shape, even when the OS reports a single
-  16:9 primary monitor. For three 16:9 monitors, use `5760x1080` or `7680x1440` and a window or logical display
+  choice. With the **Aspect ratio** at Monitor's shape, a picture wider than 16:9 is kept to 5120x2160's pixels, so above
+  that a wide size is not a native frame. A custom output wider than 32:9 also sets the camera shape, even when the OS
+  reports a single 16:9 primary monitor. For three 16:9 monitors, use `5760x1080` or `7680x1440` and a window or logical display
   that spans all three. Both render at full size: 7680x1440 has 5120x2160's pixels, the most a wide picture takes.
   For one run, set `HOS_OUTPUT_RES` to a size, such as `HOS_OUTPUT_RES=3840x2160`.
 - **Window scaling filter** matters only when your window's size differs from the Output resolution: for the sharpest
@@ -804,6 +817,18 @@ for screenshots.
 For a first run on a 4 GB card such as a GTX 1650, `RX_VK_LOW_SPEC=1` starts with the Minimum (4GB) preset, with
 frame generation and upscaling off. It applies only when there is no `hookshot_options.ini` yet; after that, change
 the settings in the in-game menu.
+
+On **Minimum (4GB)**, when the driver reports a nonzero VRAM budget of at most 4.5 GiB, sampled ASTC textures use
+a 1024 dimension limit and an 8 MiB decoded-size threshold for leaving out their top mip levels. This lowers texture
+detail to reduce the working set. Other presets and larger or unknown budgets keep the 2048 / 64 MiB defaults;
+uncompressed render targets, depth images and the separate `RX_VK_TEX_MAX_MB` allocation limit keep their handling.
+The driver budget is sampled at the first texture creation and kept for the session. It is a heuristic, not a physical
+VRAM measurement: other applications can lower the budget even on a larger card.
+
+`RX_VK_LOW_VRAM_MIPS=0` (also `off`, `false` or `no`) disables the automatic rule. `RX_VK_TEX_MAX_DIM` overrides only
+the dimension limit, so setting it to 2048 still leaves the automatic 8 MiB threshold active on Minimum with a small
+budget. `RX_VK_TEX_SKIP_MB` overrides that threshold using its existing parsing. For a more aggressive experiment,
+use `RX_VK_TEX_MAX_DIM=512 RX_VK_TEX_SKIP_MB=2`. Changes to these environment switches take effect after a restart.
 
 `RX_VK_MOVIE_UPSCALE=linear` replaces the movies' neural upscale with the plain linear one. The default, `auto`, keeps
 the networks and falls back only when a movie frame takes the GPU more than 40 ms. That is on NVIDIA cards: on other
