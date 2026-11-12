@@ -1004,19 +1004,23 @@ bool upload_astc_gpu(Texture& tex, uint64_t total, const Ranges* dirty) {
         return false;
     }
     std::vector<uint8_t> scratch;
+    static const bool alpha_stats = env_on("RX_VK_ASTC_ALPHA_STATS");
+    uint64_t alpha_with = 0;
     for (size_t k = 0; k < layers.size(); k++) {
         const uint64_t at = (uint64_t)layers[k] * layer_size + tail0;
         if (at >= total) continue;
         const uint64_t n = std::min(tail, total - at);
-        std::memcpy(s.data + k * tail, guest_bytes(tex.gpu + at, n, scratch), n);
+        const uint8_t* src = guest_bytes(tex.gpu + at, n, scratch);
+        // (counted in the game's bytes: the staging memory is write-combined, and reading it back took 95 ms a 768-square texture)
+        if (alpha_stats && tex.bc) alpha_with += astc_alpha::count(src, n);
+        std::memcpy(s.data + k * tail, src, n);
     }
     const uint64_t staged = tail * layers.size();
     // (fork) RX_VK_ASTC_ALPHA_STATS=1: how much of the ASTC kept as BC3 has no alpha at all (could be BC1, half the size)
-    static const bool alpha_stats = env_on("RX_VK_ASTC_ALPHA_STATS");
     if (alpha_stats && tex.bc) {
         static std::mutex mu;
         static uint64_t n_tex, n_opaque, b_all, b_opaque;
-        const uint64_t with = astc_alpha::count(s.data, staged), blocks = staged / 16;
+        const uint64_t with = alpha_with, blocks = staged / 16;
         const uint64_t part = tex.bytes * layers.size() / std::max(1u, tex.layers);
         std::lock_guard<std::mutex> lk(mu);
         n_tex++, b_all += part;
