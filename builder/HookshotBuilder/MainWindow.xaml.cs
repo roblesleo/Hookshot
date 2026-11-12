@@ -674,7 +674,7 @@ public partial class MainWindow : Window
             string? why = null;
             for (var attempt = 0; attempt < 3; attempt++)   // (GitHub cuts downloads off now and then: what came whole is kept)
             {
-                why = await Fork.Prepare(false, line => Dispatcher.BeginInvoke(() => FilesSub.Text = line), forkPrep.Token);
+                why = await Fork.Prepare(false, false, line => Dispatcher.BeginInvoke(() => FilesSub.Text = line), forkPrep.Token);
                 if (why == null || why == "Cancelled") break;
             }
             forkPrep = null;
