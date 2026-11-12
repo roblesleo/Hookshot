@@ -82,6 +82,8 @@ public partial class MainWindow : Window
             : tools != null
             ? "Nothing else to install: Hookshot's own build tools are here, downloaded and checked by its setup."
             : "Hookshot's build tools are missing from its folder. Press Build and Hookshot offers to download them again.";
+        // (fork: each build is the fork's newest code, never an official track's release: the track menu has nothing to choose)
+        if (Fork.On) TrackLabel.Visibility = TrackBox.Visibility = Visibility.Collapsed;
         SetStep(0);
         Refresh();
     }
@@ -130,6 +132,7 @@ public partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("HOOKSHOT_UI_PREVIEW") is { Length: > 0 } preview) { Preview(preview); return; }
         CheckAll();
         latestTag = Environment.GetEnvironmentVariable("HOOKSHOT_LATEST_TAG") is { Length: > 0 } fake ? (fake == "none" ? null : fake) : await Updater.LatestTag(Track);
+        if (Fork.On) forkHead = await Fork.Head();
         RefreshMode();
     }
 
@@ -166,6 +169,7 @@ public partial class MainWindow : Window
     enum Mode { Build, UpdateGame, UpToDate, UpdateBuilder }
     Mode mode = Mode.Build;
     string? latestTag, updateTarget;
+    string? forkHead;   // (fork: the branch's newest commit on GitHub, Fork.Head; null until it answers)
     bool sourcePicked;   // (the player chose game files here: a build from them, even over a game that is up to date)
 
     /// The release a game folder was built with (its hookshot_version.txt), when it keeps its game files for updates
@@ -198,8 +202,18 @@ public partial class MainWindow : Window
             ? UpscalerParts.Missing(OutPath.Text, DlssTick.IsChecked == true, FsrTick.IsChecked == true, fsrLicense)
             : new List<string>();
         if (lacking.Count > 0) mode = Mode.UpdateGame;
+        // (fork: the fork's code changes without a new version number. A game built from another commit than the branch's
+        // newest, or before the folders kept theirs, is offered Update: its game files kept, the newest code built)
+        var forkMoved = Fork.On && mode == Mode.UpToDate && forkHead != null && Fork.Built(OutPath.Text) != forkHead;
+        if (forkMoved) mode = Mode.UpdateGame;
         switch (mode)
         {
+            case Mode.UpdateGame when forkMoved:
+                FilesTitle.Text = "New code in the fork";
+                FilesSub.Text = "The fork has changed since your game was built. Update builds it again with the newest code, from the " +
+                                "game files kept in its folder. Your saves stay.";
+                BuildButton.Content = "Update";
+                break;
             case Mode.UpdateGame when lacking.Count > 0:
                 FilesTitle.Text = "Update to add " + string.Join(" and ", lacking);
                 FilesSub.Text = $"Your game was built without {string.Join(" and ", lacking)}. Update builds it again from the game " +
@@ -308,6 +322,7 @@ public partial class MainWindow : Window
     {
         get
         {
+            if (Fork.On) return Updater.Release;   // (fork: the track menu is hidden; a track saved before stays unused)
             if (chosenTrack != null) return chosenTrack;
             var saved = BuilderSettings.Load(SettingsPath)?.Track;
             return saved != null && TrackIds.Contains(saved) ? saved : Updater.TrackOf(Tools.Find()?.Version);
@@ -1241,6 +1256,7 @@ public partial class MainWindow : Window
         runner = null;
         if (finished.Length > 0)
         {
+            if (Fork.On) Fork.Mark(Directory.Exists(finished) ? finished : OutPath.Text);   // (the code it was built from, for RefreshMode)
             foreach (var (id, r) in rows)
             {
                 if (id != ShaderStep.Id) r.Done();

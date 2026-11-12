@@ -121,7 +121,18 @@ try {
     Say "@@progress 0.13"
     $src = Join-Path $Home2 'src'
     $zip = Join-Path $Home2 'src.zip'
-    Get-File "https://github.com/$Repo/archive/refs/heads/$Branch.zip" $zip $null 0
+    # (the branch's commit first, and its code by that commit: the game folder keeps it, so the builder offers Update when the
+    # branch has moved on. GitHub not answering: the branch's code as it is, with no commit kept)
+    $commit = $null
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -Uri "https://api.github.com/repos/$Repo/commits/$Branch" `
+            -Headers @{ Accept = 'application/vnd.github.sha'; 'User-Agent' = 'HookshotBuilder' } -TimeoutSec 15
+        $commit = if ($r.Content -is [byte[]]) { [Text.Encoding]::ASCII.GetString($r.Content) } else { [string]$r.Content }
+        $commit = $commit.Trim()
+    } catch { }
+    if ($commit -notmatch '^[0-9a-f]{40}$') { $commit = $null }
+    $ref = if ($commit) { $commit } else { "refs/heads/$Branch" }
+    Get-File "https://github.com/$Repo/archive/$ref.zip" $zip $null 0
     $Linked = @('python', 'cpm', 'llvm-mingw', 'wgpu-native')
     foreach ($n in $Linked) {   # (the links into the tools first, on their own: a recursive delete must never reach the tools)
         $l = Join-Path $src $n
@@ -135,6 +146,7 @@ try {
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)
     Move-Item (Get-ChildItem $tmp -Directory | Select-Object -First 1).FullName $src
     Remove-Item $tmp -Recurse -Force
+    if ($commit) { [IO.File]::WriteAllText((Join-Path $src '.fork_commit'), $commit) }   # (Fork.Mark copies it into the game folder)
     # (what a clone lacks and the tools carry: the prebuilt files under third_party\ and the work files)
     $tp = Join-Path $tools 'third_party'
     Get-ChildItem $tp -Recurse -File -Include *.dll, *.exe, *.lib, *.sha1 | ForEach-Object {

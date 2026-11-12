@@ -183,7 +183,9 @@
 "The connection dropped while downloading": "La connexion a été coupée pendant le téléchargement",
 "Press Repair to try again: what was already downloaded is kept.": "Appuyez sur Réparer pour réessayer : ce qui a déjà été téléchargé est conservé.",
 "Update to add {0}": "Mettre à jour pour ajouter {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Votre jeu a été construit sans {0}. Mettre à jour le reconstruit à partir des fichiers du jeu gardés dans son dossier, avec ce que vous avez coché. Vos sauvegardes restent."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Votre jeu a été construit sans {0}. Mettre à jour le reconstruit à partir des fichiers du jeu gardés dans son dossier, avec ce que vous avez coché. Vos sauvegardes restent.",
+"New code in the fork": "Nouveau code dans le fork",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "Le fork a changé depuis la création de votre jeu. Mettre à jour le reconstruit avec le code le plus récent, à partir des fichiers du jeu gardés dans son dossier. Vos sauvegardes restent."
 },
 "de": {
 "Starting…": "Wird gestartet…",
@@ -371,7 +373,9 @@
 "The connection dropped while downloading": "Die Verbindung ist beim Herunterladen abgebrochen",
 "Press Repair to try again: what was already downloaded is kept.": "Drücke auf Reparieren, um es erneut zu versuchen: Bereits Heruntergeladenes bleibt erhalten.",
 "Update to add {0}": "Aktualisieren, um {0} hinzuzufügen",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Dein Spiel wurde ohne {0} gebaut. Aktualisieren baut es aus den im Ordner aufbewahrten Spieldateien neu, mit dem, was du angehakt hast. Deine Spielstände bleiben."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Dein Spiel wurde ohne {0} gebaut. Aktualisieren baut es aus den im Ordner aufbewahrten Spieldateien neu, mit dem, was du angehakt hast. Deine Spielstände bleiben.",
+"New code in the fork": "Neuer Code im Fork",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "Der Fork hat sich geändert, seit dein Spiel gebaut wurde. Aktualisieren baut es mit dem neuesten Code neu, aus den im Ordner aufbewahrten Spieldateien. Deine Spielstände bleiben."
 },
 "it": {
 "Starting…": "Avvio…",
@@ -558,7 +562,9 @@
 "The connection dropped while downloading": "La connessione si è interrotta durante il download",
 "Press Repair to try again: what was already downloaded is kept.": "Premi Ripara per riprovare: ciò che è già stato scaricato viene mantenuto.",
 "Update to add {0}": "Aggiorna per aggiungere {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Il tuo gioco è stato compilato senza {0}. Aggiorna lo ricompila dai file del gioco conservati nella sua cartella, con ciò che hai spuntato. I tuoi salvataggi restano."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Il tuo gioco è stato compilato senza {0}. Aggiorna lo ricompila dai file del gioco conservati nella sua cartella, con ciò che hai spuntato. I tuoi salvataggi restano.",
+"New code in the fork": "Nuovo codice nel fork",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "Il fork è cambiato da quando il tuo gioco è stato compilato. Aggiorna lo ricompila con il codice più recente, dai file del gioco conservati nella sua cartella. I tuoi salvataggi restano."
 },
 "es": {
 "Starting…": "Iniciando…",
@@ -745,7 +751,9 @@
 "The connection dropped while downloading": "La conexión se cortó durante la descarga",
 "Press Repair to try again: what was already downloaded is kept.": "Pulsa Reparar para volver a intentarlo: lo que ya se descargó se conserva.",
 "Update to add {0}": "Actualiza para añadir {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Tu juego se compiló sin {0}. Actualizar lo vuelve a compilar con los archivos del juego guardados en su carpeta, con lo que marcaste. Tus partidas se conservan."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Tu juego se compiló sin {0}. Actualizar lo vuelve a compilar con los archivos del juego guardados en su carpeta, con lo que marcaste. Tus partidas se conservan.",
+"New code in the fork": "Código nuevo en el fork",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "El fork cambió desde que se compiló tu juego. Actualizar lo vuelve a compilar con el código más reciente, con los archivos del juego guardados en su carpeta. Tus partidas se conservan."
 },
 "pt": {
 "Starting…": "Iniciando…",
@@ -932,7 +940,9 @@
 "The connection dropped while downloading": "A conexão caiu durante o download",
 "Press Repair to try again: what was already downloaded is kept.": "Clique em Reparar para tentar de novo: o que já foi baixado é mantido.",
 "Update to add {0}": "Atualize para adicionar {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Seu jogo foi montado sem {0}. Atualizar monta de novo a partir dos arquivos do jogo guardados na pasta, com o que você marcou. Seus saves ficam."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Seu jogo foi montado sem {0}. Atualizar monta de novo a partir dos arquivos do jogo guardados na pasta, com o que você marcou. Seus saves ficam.",
+"New code in the fork": "Código novo no fork",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "O fork mudou desde que seu jogo foi montado. Atualizar monta de novo com o código mais recente, a partir dos arquivos do jogo guardados na pasta. Seus saves ficam."
 },
 "nl": {
 "Starting…": "Starten…",
@@ -1120,7 +1130,9 @@
 "The connection dropped while downloading": "De verbinding viel weg tijdens het downloaden",
 "Press Repair to try again: what was already downloaded is kept.": "Druk op Herstellen om het opnieuw te proberen: wat al is gedownload, blijft bewaard.",
 "Update to add {0}": "Bijwerken om {0} toe te voegen",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Je spel is gebouwd zonder {0}. Bijwerken bouwt het opnieuw uit de spelbestanden in de map, met wat je hebt aangevinkt. Je opslagbestanden blijven."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Je spel is gebouwd zonder {0}. Bijwerken bouwt het opnieuw uit de spelbestanden in de map, met wat je hebt aangevinkt. Je opslagbestanden blijven.",
+"New code in the fork": "Nieuwe code in de fork",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "De fork is veranderd sinds je spel is gebouwd. Bijwerken bouwt het opnieuw met de nieuwste code, uit de spelbestanden die in de map bewaard zijn. Je opslagbestanden blijven."
 },
 "pl": {
 "Starting…": "Uruchamianie…",
@@ -1308,7 +1320,9 @@
 "The connection dropped while downloading": "Połączenie zostało przerwane podczas pobierania",
 "Press Repair to try again: what was already downloaded is kept.": "Kliknij Napraw, aby spróbować ponownie: to, co już pobrano, zostanie zachowane.",
 "Update to add {0}": "Zaktualizuj, aby dodać {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Twoja gra została zbudowana bez {0}. Aktualizacja zbuduje ją ponownie z plików gry zachowanych w jej folderze, z tym, co zaznaczyłeś. Twoje zapisy zostaną."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Twoja gra została zbudowana bez {0}. Aktualizacja zbuduje ją ponownie z plików gry zachowanych w jej folderze, z tym, co zaznaczyłeś. Twoje zapisy zostaną.",
+"New code in the fork": "Nowy kod w forku",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "Fork zmienił się od czasu zbudowania gry. Aktualizacja buduje ją ponownie z najnowszym kodem, z plików gry zachowanych w jej folderze. Zapisy gry zostają."
 },
 "ru": {
 "Starting…": "Запуск…",
@@ -1496,7 +1510,9 @@
 "The connection dropped while downloading": "Соединение прервалось во время загрузки",
 "Press Repair to try again: what was already downloaded is kept.": "Нажмите «Восстановить», чтобы попробовать снова: уже скачанное сохранится.",
 "Update to add {0}": "Обновите, чтобы добавить {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Ваша игра собрана без {0}. «Обновить» соберёт её заново из файлов игры в её папке, с тем, что вы отметили. Сохранения останутся."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "Ваша игра собрана без {0}. «Обновить» соберёт её заново из файлов игры в её папке, с тем, что вы отметили. Сохранения останутся.",
+"New code in the fork": "Новый код в форке",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "Форк изменился с тех пор, как игра была собрана. Обновление собирает её заново с новейшим кодом из файлов игры, сохранённых в её папке. Сохранения остаются."
 },
 "ja": {
 "Starting…": "起動しています…",
@@ -1684,7 +1700,9 @@
 "The connection dropped while downloading": "ダウンロード中に接続が切れました",
 "Press Repair to try again: what was already downloaded is kept.": "[修復] を押してもう一度お試しください。ダウンロード済みのものは保持されます。",
 "Update to add {0}": "更新して {0} を追加",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "このゲームは {0} なしでビルドされています。更新すると、フォルダーに保存されたゲームファイルから、チェックした内容で再ビルドします。セーブデータはそのまま残ります。"
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "このゲームは {0} なしでビルドされています。更新すると、フォルダーに保存されたゲームファイルから、チェックした内容で再ビルドします。セーブデータはそのまま残ります。",
+"New code in the fork": "フォークに新しいコード",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "ゲームを作成した後にフォークが変わりました。更新すると、フォルダーに保管されたゲームファイルから最新のコードで作り直します。セーブはそのまま残ります。"
 },
 "ko": {
 "Starting…": "시작하는 중…",
@@ -1872,7 +1890,9 @@
 "The connection dropped while downloading": "다운로드 중 연결이 끊어졌습니다",
 "Press Repair to try again: what was already downloaded is kept.": "다시 시도하려면 [복구]를 누르세요. 이미 다운로드한 항목은 유지됩니다.",
 "Update to add {0}": "업데이트하여 {0} 추가",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "게임이 {0} 없이 빌드되었습니다. 업데이트하면 폴더에 보관된 게임 파일로 선택한 항목을 포함해 다시 빌드합니다. 세이브는 그대로 유지됩니다."
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "게임이 {0} 없이 빌드되었습니다. 업데이트하면 폴더에 보관된 게임 파일로 선택한 항목을 포함해 다시 빌드합니다. 세이브는 그대로 유지됩니다.",
+"New code in the fork": "포크에 새 코드",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "게임을 만든 뒤 포크가 바뀌었습니다. 업데이트하면 폴더에 보관된 게임 파일로 최신 코드로 다시 만듭니다. 세이브는 그대로 남습니다."
 },
 "zh-Hans": {
 "Starting…": "正在启动…",
@@ -2060,7 +2080,9 @@
 "The connection dropped while downloading": "下载时连接中断",
 "Press Repair to try again: what was already downloaded is kept.": "按“修复”重试：已下载的内容会保留。",
 "Update to add {0}": "更新以添加 {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "你的游戏构建时没有 {0}。更新会用文件夹中保存的游戏文件，按你勾选的内容重新构建。存档会保留。"
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "你的游戏构建时没有 {0}。更新会用文件夹中保存的游戏文件，按你勾选的内容重新构建。存档会保留。",
+"New code in the fork": "分支有新代码",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "自游戏构建以来，分支已有更改。更新会用最新代码，从文件夹中保存的游戏文件重新构建。存档会保留。"
 },
 "zh-Hant": {
 "Starting…": "正在啟動…",
@@ -2248,6 +2270,8 @@
 "The connection dropped while downloading": "下載時連線中斷",
 "Press Repair to try again: what was already downloaded is kept.": "按「修復」重試：已下載的內容會保留。",
 "Update to add {0}": "更新以加入 {0}",
-"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "你的遊戲建置時沒有 {0}。更新會用資料夾中保存的遊戲檔案，依你勾選的內容重新建置。存檔會保留。"
+"Your game was built without {0}. Update builds it again from the game files kept in its folder, with what is ticked below. Your saves stay.": "你的遊戲建置時沒有 {0}。更新會用資料夾中保存的遊戲檔案，依你勾選的內容重新建置。存檔會保留。",
+"New code in the fork": "分支有新程式碼",
+"The fork has changed since your game was built. Update builds it again with the newest code, from the game files kept in its folder. Your saves stay.": "自遊戲建置以來，分支已有變更。更新會用最新程式碼，從資料夾中保存的遊戲檔案重新建置。存檔會保留。"
 }
 }

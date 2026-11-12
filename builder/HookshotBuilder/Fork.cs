@@ -21,6 +21,46 @@ static class Fork
     public static string Src => Path.Combine(Home, "src");
     public static string FfxSdk => Path.Combine(Home, "ffx-sdk");
 
+    // ---- the branch's commit: the code a game folder was built from, against the branch's newest (Update when it moved on) ----
+    const string Branch = "full";
+    const string BuiltFile = ".hookshot_fork_commit";
+
+    /// The commit a game folder was built from (Mark), or null: built before the folders kept it, or not by this builder
+    public static string? Built(string folder)
+    {
+        try
+        {
+            var path = Path.Combine(folder, BuiltFile);
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+        }
+        catch (Exception) { return null; }
+    }
+
+    /// After a build: the commit of the code it built (the worker's src\.fork_commit) kept in the game folder
+    public static void Mark(string folder)
+    {
+        try
+        {
+            var code = Path.Combine(Src, ".fork_commit");
+            if (Directory.Exists(folder) && File.Exists(code)) File.Copy(code, Path.Combine(folder, BuiltFile), overwrite: true);
+        }
+        catch (Exception) { }
+    }
+
+    /// The branch's newest commit on GitHub, quietly (null: GitHub did not answer)
+    public static async Task<string?> Head()
+    {
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("HookshotBuilder");
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github.sha");
+            var sha = (await http.GetStringAsync($"https://api.github.com/repos/{Repo["github.com/".Length..]}/commits/{Branch}")).Trim();
+            return System.Text.RegularExpressions.Regex.IsMatch(sha, "^[0-9a-f]{40}$") ? sha : null;
+        }
+        catch (Exception) { return null; }
+    }
+
     /// The worker, written out of this app's resources beside the rest (a fresh copy each time: this app's own)
     static string Worker()
     {
