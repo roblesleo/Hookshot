@@ -13,6 +13,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Out,
     [string]$Language = 'pt-BR',
     [switch]$Dlss,
+    [switch]$AcceptAmdLicense,   # (AMD's license, which the window showed: AMD's FSR runtime fetched; without it nothing of AMD's)
     [switch]$ToolsOnly   # (the tools, the code and AMD's (and with -Dlss NVIDIA's) files fetched, no build: what the fork's
                          # HookshotBuilder.exe runs before it builds)
 )
@@ -159,7 +160,8 @@ try {
     $env:HOOKSHOT_MINGW = Join-Path $tools 'llvm-mingw'
     $env:HOOKSHOT_FFX_SDK = Join-Path $Home2 'ffx-sdk'
     $a = @('-I', 'nx2\make_game.py', '--nup', $Nup, '--out', $Out, '--language', $Language,
-           '--work', (Join-Path $Home2 'work'), '--fsr', '--fetch-fsr-runtime')
+           '--work', (Join-Path $Home2 'work'), '--fsr')
+    if ($AcceptAmdLicense) { $a += @('--fetch-fsr-runtime', '--accept-amd-license') }
     if ($Dlss) {
         $env:HOOKSHOT_NGX_SDK = Join-Path $Home2 'ngx-sdk'
         $a += @('--fetch-ngx-sdk', '--accept-nvidia-license')
@@ -171,7 +173,8 @@ try {
     # (NVIDIA's and AMD's files first, on their own: GitHub cuts a download off now and then (WinError 10054), and the
     # scripts keep each file already fetched whole, so each try goes on from where the last stopped. make_game.py then finds
     # them all there and downloads nothing)
-    $fetches = @(@{ Name = "AMD FSR"; Args = @('-I', 'scripts\ffx_sdk.py', $env:HOOKSHOT_FFX_SDK) })
+    $fetches = @()
+    if ($AcceptAmdLicense) { $fetches += @{ Name = "AMD FSR"; Args = @('-I', 'scripts\ffx_sdk.py', $env:HOOKSHOT_FFX_SDK, '--accept-amd-license') } }
     if ($Dlss) { $fetches += @{ Name = "NVIDIA DLSS"; Args = @('-I', 'scripts\ngx_sdk.py', $env:HOOKSHOT_NGX_SDK, '--accept-nvidia-license') } }
     foreach ($f in $fetches) {
         Say ("@@stage Baixando os arquivos do " + $f.Name)

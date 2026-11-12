@@ -5,6 +5,9 @@ import re
 import subprocess
 import tempfile
 
+# (env_on, the switches' rule, before the code cut out of the sources: gpu/vk/compat/hookshot_env.h)
+ENV_ON_H = str(Path(__file__).resolve().parents[1] / "gpu" / "vk" / "compat" / "hookshot_env.h")
+
 RUN_ALL_ARGS = ["--cxx", "{cxx}", "--headers", "{vulkan_headers}"]
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,12 +56,15 @@ def main():
              "independent", "valid-after-failure", "owner-commit", "seen-commit", "mine-commit", "failure-commit",
              "registration", "shared-thread", "concurrent", "nearest", "linear", "compare", "compare-explicit",
              "compare-pcf-off", "custom-border", "standard-border", "reduction", "compare-reduction", "anisotropy",
+             "anisotropy-row", "anisotropy-game", "anisotropy-env-off", "anisotropy-change",
+             "anisotropy-no-mips", "anisotropy-nearest-mip",
+             "upscale-bias", "upscale-bias-plain", "upscale-bias-change",
              "unknown-id", "force-linear", "wrap", "lod-clamp", "custom-reduction",
              "descriptor-push", "descriptor-pool", "descriptor-compute", "descriptor-old", "descriptor-whole"]
     with tempfile.TemporaryDirectory(prefix="sampler-admission-") as temp:
         cpp, exe = Path(temp) / "fixture.cpp", Path(temp) / "fixture.exe"
         cpp.write_text(fixture, encoding="utf-8")
-        subprocess.run([a.cxx, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-missing-field-initializers",
+        subprocess.run([a.cxx, "-std=c++20", "-include", ENV_ON_H, "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-missing-field-initializers",
                         "-pthread", "-I" + str(a.headers),
                         *(["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"] if a.sanitize else []),
                         str(cpp), "-o", str(exe)], check=True)

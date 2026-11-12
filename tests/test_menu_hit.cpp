@@ -55,21 +55,25 @@ int main() {
     CHECK("the slider's value", slider_value(m.drag(720, 7), 0, 100, 10) == 30 && slider_value(1000, 0, 100, 10) == 100);
     CHECK("the knob's place", slider_permille(60, 0, 100) == 600 && slider_permille(500, 10, 300) == 1000);
 
-    // ---- the Controls page: a name and two cells (gamepad, keyboard) a row, Reset to defaults at the end ----
+    // ---- the Controls page: a name, two gamepad cells and a keyboard cell per row, then Reset to defaults ----
     m.clear(0, 0, 1920, 1080);
     for (int i = 0; i < 3; i++) {
         const float y = 120 + i * 42;
         m.add(100, y, 400, y + 36, kCtlRow, i);
-        m.add(400, y, 700, y + 36, kCtlCell, i, 0, 0, 0, 0, 0);
-        m.add(700, y, 1000, y + 36, kCtlCell, i, 0, 0, 0, 0, 1);
+        m.add(400, y, 547, y + 36, kCtlCell, i, 0, 0, 0, 0, kCtlPrimary);
+        m.add(553, y, 697, y + 36, kCtlCell, i, 0, 0, 0, 0, kCtlAlternate);
+        m.add(703, y, 1000, y + 36, kCtlCell, i, 0, 0, 0, 0, kCtlKeyboard);
     }
     m.add(100, 120 + 3 * 42, 390, 120 + 3 * 42 + 36, kCtlRow, 3);
     h = m.at(200, 130 + 42);
     CHECK("a control's name", h.part == kCtlRow && h.index == 1);
     h = m.at(500, 130 + 84);
-    CHECK("its gamepad cell", h.part == kCtlCell && h.index == 2 && h.side == 0);
+    CHECK("its primary gamepad cell", h.part == kCtlCell && h.index == 2 && h.side == kCtlPrimary);
+    h = m.at(620, 130 + 84);
+    CHECK("its alternate gamepad cell", h.part == kCtlCell && h.index == 2 && h.side == kCtlAlternate);
+    CHECK("the gap between gamepad cells", m.at(550, 130 + 84).part == kNone);
     h = m.at(800, 130);
-    CHECK("its keyboard cell", h.part == kCtlCell && h.index == 0 && h.side == 1);
+    CHECK("its keyboard cell", h.part == kCtlCell && h.index == 0 && h.side == kCtlKeyboard);
     h = m.at(200, 130 + 126);
     CHECK("Reset to defaults", h.part == kCtlRow && h.index == 3);
     m.add(100, 60, 1000, 96, kCtlOption, 1, 600, 1000);   // (a row of the page's own, above the grid: Button prompts)
@@ -117,6 +121,25 @@ int main() {
     CHECK("to the image's pixels", ix == 1280 && iy == 720);
     to_image(5, 7, 0, 0, 2560, 1440, &ix, &iy);
     CHECK("no window size: as it is", ix == 5 && iy == 7);
+
+    // ---- a click on an option's row: the name selects it and leaves the value (a click on "Output resolution" to read its
+    // help stepped it, and closing the menu then asked to restart for a resolution never chosen) ----
+    CHECK("the name of a choice: select only", row_click(true, false, 0) == kClickSelect);
+    CHECK("the name of a toggle: select only", row_click(true, true, 0) == kClickSelect);
+    CHECK("a choice's halves", row_click(true, false, -1) == kClickLeft && row_click(true, false, 1) == kClickRight);
+    CHECK("a toggle's other half flips it", row_click(true, true, -1, true) == kClickRight && row_click(true, true, 1, false) == kClickRight);
+    CHECK("a toggle's half already chosen leaves it (Docked clicked while Docked)",
+          row_click(true, true, -1, false) == kClickSelect && row_click(true, true, 1, true) == kClickSelect);
+    CHECK("a page anywhere opens", row_click(false, false, 0) == kClickConfirm && row_click(false, false, 1) == kClickConfirm);
+    {   // (as drawn: the name from 0 to 100, the value from 100 to 300)
+        Map rows;
+        rows.clear(0, 0, 400, 100);
+        rows.add(0, 0, 300, 40, kRow, 3, 100, 300);
+        const Hit name = rows.at(50, 20), left = rows.at(150, 20), right = rows.at(250, 20);
+        CHECK("the name is side 0", name.part == kRow && name.index == 3 && name.side == 0);
+        CHECK("a click on the name changes nothing", row_click(true, false, name.side) == kClickSelect);
+        CHECK("the value's halves", row_click(true, false, left.side) == kClickLeft && row_click(true, false, right.side) == kClickRight);
+    }
 
     std::printf("PASS: the hit-test over the controls as drawn\n");
     return 0;

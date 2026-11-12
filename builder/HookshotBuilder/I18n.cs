@@ -234,5 +234,7 @@ static class MessageBox
     public static MessageBoxResult Show(Window owner, string text, string caption, MessageBoxButton button, MessageBoxImage icon) =>
         System.Windows.MessageBox.Show(owner, I18n.Tr(text), I18n.Tr(caption), button, icon);
     public static MessageBoxResult Show(string text, string caption) => System.Windows.MessageBox.Show(I18n.Tr(text), I18n.Tr(caption));
+    public static MessageBoxResult Show(string text, string caption, MessageBoxButton button, MessageBoxImage icon) =>
+        System.Windows.MessageBox.Show(I18n.Tr(text), I18n.Tr(caption), button, icon);
     public static MessageBoxResult Show(string text) => System.Windows.MessageBox.Show(I18n.Tr(text));
 }

@@ -8,8 +8,9 @@ repository at one pinned release, each file checked against its SHA-256, into <f
 gpu/vk/vk_fsr4.cpp looks for them in RX_VK_FSR_DIR, beside the executable, then in the game folder. Windows only: AMD
 publishes the runtime for Windows alone (Linux takes a Vulkan FSR 4 library of its own: the readme).
 
-Usage:  python -I scripts/ffx_sdk.py [--game <game folder>] [<folder>]
+Usage:  python -I scripts/ffx_sdk.py [--accept-amd-license] [--game <game folder>] [<folder>]
   <folder>: default work/ffx-sdk
+  --accept-amd-license: AMD's license, accepted (without it: asked, and nothing is downloaded without a yes)
   --game: the runtime copied into <game folder> too (nx2/make_game.py --fetch-fsr-runtime does the same for the folder it
           builds)
 """
@@ -22,6 +23,11 @@ import urllib.request
 
 COMMIT = "7539ae8b6568ad29ed78a753404351daf3b5cca7"   # (tag v2.4.0: FSR 4.1.2, FSR 3.1.6)
 BASE = "https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/" + COMMIT
+# AMD's license for these files, at the pinned commit (it grants installing, copying and redistributing them in binary form,
+# with its notices kept and no reverse engineering). It asks for no acceptance step; one is asked all the same, as for
+# NVIDIA's (scripts/ngx_sdk.py): one rule for both, and nobody gets AMD's files without having seen the terms
+LICENSE_URL = ("https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/blob/" + COMMIT +
+               "/Kits/FidelityFX/docs/license.md")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # (path in AMD's repository, its SHA-256, its name here)
@@ -34,11 +40,13 @@ FILES = [
      "32357259b965d6a8001e9e508ba60eda6034027c5923a7d226ffbaff813c2bfb", "LICENSE-AMD-FSR-SDK.md"),
 ]
 RUNTIME = [f[2] for f in FILES]
+DLLS = [f[2] for f in FILES if f[2].endswith(".dll")]
 
 NOTICE = """\
 AMD FSR 4: this downloads AMD's FSR runtime for Vulkan (FSR SDK v2.4.0: FSR 4.1.2) from
 github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK. AMD's files are AMD's, not Hookshot's, signed by AMD and under AMD's
-FSR SDK license (saved as LICENSE-AMD-FSR-SDK.md beside them)."""
+FSR SDK license (saved as LICENSE-AMD-FSR-SDK.md beside them):
+  """ + LICENSE_URL
 
 TIMEOUT = 60   # (seconds without an answer, or between two reads, before a download gives up)
 
@@ -88,9 +96,24 @@ def complete(folder):
     return all(os.path.isfile(os.path.join(folder, n)) and sha256(os.path.join(folder, n)) == d for _, d, n in FILES)
 
 
-def install(folder, game_ffx):
-    """The runtime copied from folder into game_ffx (made when missing): where the game finds it (the game folder)"""
+def others(game_ffx):
+    """AMD DLLs in game_ffx that are not the pinned ones (a newer SDK the player put there by hand, say)"""
+    digests = {name: digest for _, digest, name in FILES}
+    return [n for n in DLLS
+            if os.path.isfile(os.path.join(game_ffx, n)) and sha256(os.path.join(game_ffx, n)) != digests[n]]
+
+
+def install(folder, game_ffx, say=print):
+    """The runtime copied from folder into game_ffx (made when missing): where the game finds it (the game folder). AMD's
+    DLLs the player put there already, other than the pinned ones, are left alone, both of them (gpu/vk/vk_fsr4.cpp takes
+    the newest FSR 4 the loader lists, so replacing them could be a downgrade), and say tells which. Returns game_ffx"""
     os.makedirs(game_ffx, exist_ok=True)
+    kept = others(game_ffx)
+    if kept:
+        say("ffx-sdk: %s in %s %s not FSR SDK v2.4.0's: left as %s (delete %s to get v2.4.0's)" % (
+            " and ".join(kept), game_ffx, "is" if len(kept) == 1 else "are", "it is" if len(kept) == 1 else "they are",
+            "it" if len(kept) == 1 else "them"))
+        return game_ffx
     for _, digest, name in FILES:
         dst = os.path.join(game_ffx, name)
         if not (os.path.isfile(dst) and sha256(dst) == digest):
@@ -99,13 +122,30 @@ def install(folder, game_ffx):
     return game_ffx
 
 
+def accepted(flag, ask=input, interactive=None):
+    """AMD's license, accepted: the flag, or a typed yes when there is someone to ask (as scripts/ngx_sdk.py's)"""
+    if flag:
+        return True
+    if not (sys.stdin.isatty() if interactive is None else interactive):
+        return False
+    try:
+        return ask("Do you accept AMD's license? Type yes to go on: ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("folder", nargs="?")
     p.add_argument("--game", help="a game folder: the runtime into it")
+    p.add_argument("--accept-amd-license", action="store_true")
     a = p.parse_args(argv)
     folder = os.path.abspath(a.folder or os.path.join(ROOT, "work", "ffx-sdk"))
     print(NOTICE, flush=True)
+    if not accepted(a.accept_amd_license):
+        print("ffx-sdk: AMD's license was not accepted (--accept-amd-license, or yes when asked): nothing downloaded",
+              file=sys.stderr, flush=True)
+        return 2
     try:
         fetch(folder)
     except (OSError, ValueError) as e:

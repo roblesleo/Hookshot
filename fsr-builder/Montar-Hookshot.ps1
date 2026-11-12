@@ -168,6 +168,10 @@ $go.Add_Click({
     $args2 = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (& $q $Worker), '-Nup', (& $q $nup.Text), '-Out', (& $q $out.Text),
                '-Language', $Languages[$lang.SelectedIndex][0])
     if ($dlss.Checked) { $args2 += '-Dlss' }
+    # (AMD FSR 4 is AMD's: its runtime is fetched only with AMD's license accepted; without it the game is built with FSR 4
+    # and the player puts AMD's DLLs there)
+    $amd = "O AMD FSR 4 é da AMD. A montagem baixa o runtime do FSR para Vulkan (FSR SDK v2.4.0: amd_fidelityfx_loader_vk.dll e amd_fidelityfx_upscaler_vk.dll, assinados pela AMD) de github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK sob a licença do FSR SDK da AMD:`n`nhttps://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/blob/7539ae8b6568ad29ed78a753404351daf3b5cca7/Kits/FidelityFX/docs/license.md`n`nAceita a licença da AMD?"
+    if ([Windows.Forms.MessageBox]::Show($amd, 'AMD FSR 4', 'YesNo', 'Information') -eq 'Yes') { $args2 += '-AcceptAmdLicense' }
     $script:proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $args2 -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput $script:outFile -RedirectStandardError (Join-Path $Home2 'montar-erros.txt')
     $stage.Text = 'Começando...'

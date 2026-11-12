@@ -16,10 +16,11 @@ enum Part {
     kCtlOption, // the Controls page: one of its own rows above the grid (index), side -1 the value's left half, 1 its right
                 // half, 0 the name
     kCtlRow,    // the Controls page: a row's name (index; index == the count: Reset to defaults)
-    kCtlCell,   // a binding: index the row, side 0 the gamepad's, 1 the keyboard's
+    kCtlCell,   // a binding: index the row, side the CtlColumn
     kListLine,  // a list (the teleport list, the inventory): a line as shown (index, 0 the top one), side -1 the left half, 1 the right half
     kButton,    // the restart question's buttons: index 0 Later, 1 Restart now
 };
+enum CtlColumn { kCtlPrimary, kCtlAlternate, kCtlKeyboard, kCtlColumns };
 struct Hit {
     Part part = kNone;
     int index = -1;
@@ -45,6 +46,20 @@ inline int slider_permille(int v, int lo, int hi) {
     if (hi <= lo) return 0;
     const int p = (int)((long long)(v - lo) * 1000 / (hi - lo));
     return p < 0 ? 0 : p > 1000 ? 1000 : p;
+}
+
+/// What a left click on an option's row does after it selects the row (side: the Hit's): kClickSelect nothing more, kClickRight
+/// and kClickLeft as Right and Left, kClickConfirm as Enter. The name only selects the row and shows its help: a click there
+/// used to change the value as Right, so clicking "Output resolution" to read about it moved it a step, and closing the menu
+/// asked to restart. A choice's halves lower and raise it; a toggle's halves are its two values (left lo, right hi), so the half already
+/// chosen leaves it as it is (on: the toggle is at hi) and the other flips it. A row without a value (a page, Restart, Quit)
+/// opens
+enum RowClick { kClickLeft = -1, kClickSelect = 0, kClickRight = 1, kClickConfirm = 2 };
+inline RowClick row_click(bool has_value, bool toggle, int side, bool on = false) {
+    if (!has_value) return kClickConfirm;
+    if (side == 0) return kClickSelect;
+    if (toggle) return (side > 0) == on ? kClickSelect : kClickRight;   // (a toggle's Right flips it either way)
+    return side > 0 ? kClickRight : kClickLeft;
 }
 
 /// The controls as last drawn

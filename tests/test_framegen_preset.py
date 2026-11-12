@@ -49,13 +49,19 @@ int saves = 0;
 void save() { ++saves; }
 void apply_pad_layout(int) {}
 void sync_preset_budgets(int) {}
+void env_release(const int*) {}   // (the environment's hold on a row: none here)
+void vram_budget_sync() {}
+constexpr int kVramMinimumOnly = 1;
 bool row_fixed(const int*) { return false; }
 int upscaler() { return 0; }
 unsigned upscalers_available() { return 1; }
 namespace ur {
 int snap(int, int value) { return value; }
+int snap_render(int, int value) { return value; }   // (the slider)
 int step(int, int value, int dir) { return value + dir; }
 int step_upscaler(int, int dir, unsigned) { return dir; }
+int step_engine(int, int dir, unsigned) { return dir; }   // (the Upscaler by engine)
+void step_render(int up, int value, int dir, int* u, int* r) { *u = up, *r = value + dir; }
 }
 namespace mr { constexpr int kMax = 8; }
 /* (the Game language row's hook in set_row: language.txt, not written here) */
@@ -64,6 +70,8 @@ void restart_values(int*) {}
 struct { void note(const int*) {} } restart_state;
 bool can_mic() { return false; }
 void mic_chosen() {}
+void samplers_changed() {}
+void prompts_at_once(const Row&) {}
 int step_output_choice(int id, int dir) { return id + dir; }
 const char* tx_framegen(int) { return ""; }
 const char* hn_framegen(int, int) { return ""; }

@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 
 RUN_ALL_ARGS = ["--cxx", "{cxx}"]
+RUN_ALL_SKIP = {"windows": "host/posix/display_sdl.c is the Linux display; the harness uses POSIX setenv"}
 
 ROOT = Path(__file__).resolve().parents[1]
 HINT = "SDL_VIDEO_WAYLAND_PREFER_LIBDECOR"
@@ -38,6 +39,7 @@ static const char* hos_sdl_error() { return ""; }
 static int hos_sdl_desktop_size(int* w, int* h) { *w = 2560; *h = 1440; return 1; }
 static int hos_posix_window[4];
 static int sdl_ready;
+int hos_display_owns_sdl(void) { return sdl_ready; }
 
 #include "display_init_actual.inc"
 
@@ -89,7 +91,9 @@ def main():
         (tmp / "harness.cpp").write_text(HARNESS, encoding="utf-8")
         exe = tmp / ("harness.exe" if os.name == "nt" else "harness")
         command = [cxx, "-std=c++20", "-O0", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
-                   "-D_CRT_SECURE_NO_WARNINGS", "-I" + str(tmp), str(tmp / "harness.cpp"), "-o", str(exe)]
+                   "-D_CRT_SECURE_NO_WARNINGS", "-I" + str(tmp), str(tmp / "harness.cpp"), "-o", str(exe),
+                   # (env_on, the switches' rule: gpu/vk/compat/hookshot_env.h)
+                   "-include", str(args.source_root / "gpu/vk/compat/hookshot_env.h")]
         result = subprocess.run(command, cwd=tmp, env=env, capture_output=True, text=True, timeout=60,
                                 creationflags=flags)
         if result.returncode:

@@ -26,6 +26,7 @@ struct Texture {
     VkImageType type = VK_IMAGE_TYPE_2D;
     VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
     VkImageUsageFlags usage = 0;
+    VkImageCreateFlags create_flags = 0;   // (hookshot: as its image was made, for the compaction's copy of it)
     uint32_t width = 1, height = 1, depth = 1, levels = 1, layers = 1;   // the image's (after skip)
     uint32_t skip = 0;        // top levels of the texture left out (huge textures: RX_VK_TEX_MAX_DIM, _MAX_MB)
     // (a huge array kept whole as a sparse resident image instead: each layer gets device memory when it is first
@@ -84,6 +85,13 @@ struct Texture {
     uint64_t pool_key = 0;    // (a render target's image: its create info's key in the pool it goes to when the texture does)
     std::unordered_map<uint64_t, VkImageView> views;
     uint64_t view_failed_frame = 0;   // (transient allocation failure: retry uncached views next frame, keep cached ones usable)
+    struct BlockAttachment {
+        VkImage image;
+        VmaAllocation allocation;
+        VkFormat format;
+        uint32_t level;
+    };
+    std::vector<BlockAttachment> block_attachments;
 };
 
 /// Makes texels [x, x + w) x [y, y + h) of level `level`, layers [first, first + count), of a sparse texture resident
@@ -138,8 +146,21 @@ Texture* texture_get(const nvn_tex* t, bool for_sampling);
 /// A view of it: the view's levels and layers (all when v is null), as view_type, in the view's format
 /// (attachment: one level, one layer; storage: one level, every layer, in a storage-capable format)
 enum class ViewUse { Sample, Attachment, Storage };
+struct TextureAttachment {
+    VkImageView view = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    VkImage blocks = VK_NULL_HANDLE;   // A separate attachment holding the encoded blocks of a 3D BC mip
+};
+TextureAttachment texture_attachment(Texture* tex, const nvn_tex* t, const nvn_view* v);
+void copy_block_attachment(VkCommandBuffer cmd, const Texture& tex, VkImage blocks, uint32_t level, uint32_t slice,
+                           bool to_attachment);
 VkImageView texture_view(Texture* tex, const nvn_tex* t, const nvn_view* v, VkImageViewType view_type, ViewUse use,
                          VkFormat* format_out = nullptr, VkFormat force_format = VK_FORMAT_UNDEFINED);
+/// (hookshot) The format rules texture_get and texture_view follow (vk_texture.cpp), shared with the pipeline state list
+VkFormat image_format_of(VkFormat vf, bool astc_decoded);
+VkFormat view_format_of(VkFormat image, bool astc_decoded, bool bc, int view_nvn, ViewUse use, VkFormat force_format);
+/// The format a draw renders in on this device, into a texture of NVN format tex_nvn through a view of NVN format view_nvn
+VkFormat attachment_format(int tex_nvn, int view_nvn);
 /// The view format an NVN texture and view sample / render in
 int view_nvn_format(const nvn_tex* t, const nvn_view* v);
 /// The level and layer a view starts at (the texture's levels)
@@ -202,7 +223,7 @@ void texture_stats(int64_t* uploads, int64_t* astc_gpu, int64_t* bytes_uploaded)
 /// (hookshot) whether texture_read_texels' walk of r at that row stride (0: the region's own) and its own image stride
 /// stays within avail bytes of the data it is given (overflow-checked: the stride is the game's)
 bool texels_fit(const nvn_tex* t, const NVNcopyRegion* r, uint64_t row, uint64_t avail);
-/// RX_VK_DUMP_TEX: the textures uploaded next written to that folder as PPM (diagnostics)
+/// ReadTexels / WriteTexels: the CPU's copy of a region of the texture in guest memory (vk_texture.cpp)
 void texture_read_texels(const nvn_tex* t, unsigned level, unsigned layer0, const NVNcopyRegion* r, uint8_t* dst,
                          uint64_t row, uint64_t img, bool write);
 

@@ -13,6 +13,15 @@ python -I -B tests/test_mesh_fallback.py
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+def _with_cache(path):
+    """vk_shader.cpp with the program cache it held before (vk_progcache.cpp and .h beside it, outside the translator stamp): definitions first"""
+    parts = [path.read_text(encoding="utf-8")]
+    for name in ("vk_progcache.cpp", "vk_progcache.h"):
+        if (path.parent / name).exists():
+            parts.append((path.parent / name).read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
 VK = ROOT / "gpu" / "vk"
 SHADER = VK / "vk_shader.cpp"
 DRAW = VK / "vk_draw.cpp"
@@ -49,7 +58,7 @@ def main():
         if field not in program:
             raise SystemExit("Program has no %s" % field)
 
-    mesh_shader = SHADER.read_text(encoding="utf-8")
+    mesh_shader = _with_cache(SHADER)
     translate = block(mesh_shader, "void translate_mesh_into(")
     if "rt.mesh_fallback = fallback;" not in translate or "mrt.mesh_fallback = fallback;" not in translate:
         raise SystemExit("the task and mesh stages are not emitted as fallback stages")
@@ -190,7 +199,7 @@ def main():
         raise SystemExit("build_graphics leaves out the task and mesh stages of native mesh programs too")
     if "dynamic_state(cmd, s, at, topo, d.mesh && !p.fallback);" not in draw:
         raise SystemExit("a fallback draw does not use the mesh program's topology")
-    if "if (p.fallback) topo = p.fallback_topology;" not in draw:
+    if "return p.fallback ? p.fallback_topology : drawn;" not in draw or "topo = pipeline_topology(p, topo);" not in draw:
         raise SystemExit("the fallback's points, lines or triangles are not used")
     runtime_mesh = block(mesh_shader, "const Program* mesh_program_locked(")
     if "p->fallback != fallback || p->mesh == fallback" not in runtime_mesh:
@@ -203,19 +212,19 @@ def main():
     if "bool fallback_pipelines_ready(Program& p) {" not in draw:
         raise SystemExit("the fallback's compute pipelines are compiled in the draw, not on a worker (AMD: seconds each)")
     ready = block(draw, "bool fallback_pipelines_ready(Program& p) {")
-    if "compare_exchange_strong(none, 1)" not in ready or "jobs_push(std::move(build), true)" not in ready or \
+    if "compare_exchange_strong(none, 1)" not in ready or "jobs_push(std::move(build), true, nullptr, failed)" not in ready or \
             "fallback_compute_pipelines(*job);" not in ready:
         raise SystemExit("the fallback's compute pipelines are compiled in the draw, not on a worker (AMD: seconds each)")
     record = block(draw, "bool fallback_record(VkCommandBuffer cmd, Program& p, const DrawArgs& d) {")
     if "fallback_pipelines_ready(p)" not in record or "fallback_compute_pipelines(p)" in record:
         raise SystemExit("a fallback draw compiles its compute pipelines itself")
     build = block(draw, "bool fallback_compute_pipelines(Program& p) {")
-    if build.index("guarded_compute(") < build.index("    }\n", build.index("std::lock_guard lk(mu);")):
+    if build.index("cached_compute(") < build.index("    }\n", build.index("std::lock_guard lk(mu);")):
         raise SystemExit("the fallback's build holds its lock through the compiles (one program at a time)")
     precompile = block(draw, "void precompile_run(void (*progress)(size_t done, size_t total)) {")
     if "else if (p.fallback) fallbacks.push_back(&p);" not in precompile or "fallback_compute_pipelines(p);" not in precompile:
         raise SystemExit("the precompile leaves the mesh fallback's compute pipelines to play")
-    shader = (ROOT / "gpu" / "vk" / "vk_shader.cpp").read_text(encoding="utf-8")
+    shader = _with_cache(ROOT / "gpu" / "vk" / "vk_shader.cpp")
     if "(fallbacks && (it->second[0].kind & 4))" not in block(shader, "size_t program_cache_load_some(") or \
             "}, all_computes, true);" not in precompile:
         raise SystemExit("the precompile loads only the mesh fallback programs play has drawn (white until compiled)")

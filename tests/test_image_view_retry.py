@@ -5,6 +5,9 @@ import re
 import subprocess
 import tempfile
 
+# (env_on, the switches' rule, before the code cut out of the sources: gpu/vk/compat/hookshot_env.h)
+ENV_ON_H = str(Path(__file__).resolve().parents[1] / "gpu" / "vk" / "compat" / "hookshot_env.h")
+
 RUN_ALL_ARGS = ["--cxx", "{cxx}", "--headers", "{vulkan_headers}"]
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +31,7 @@ def main():
     p.add_argument("--sanitize", action="store_true")
     a = p.parse_args()
     source = (a.source / "gpu/vk/vk_texture.cpp").read_text(encoding="utf-8")
-    names = ["VkFormat widened(", "VkFormat storage_view_format(", "VkComponentSwizzle component(",
+    names = ["VkFormat widened(", "VkFormat storage_view_format(", "VkFormat view_format_of(", "VkComponentSwizzle component(",
              "VkImageView make_view(", "template<class Make>\nVkImageView cached_image_view(",
              "VkImageView astc_target_view(", "VkImageView astc_level_view(", "unsigned view_level(",
              "unsigned image_level(", "unsigned view_layer(", "VkImageView texture_view("]
@@ -44,7 +47,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="image-view-retry-") as temp:
         cpp, exe = Path(temp) / "fixture.cpp", Path(temp) / "fixture.exe"
         cpp.write_text(fixture, encoding="utf-8")
-        subprocess.run([a.cxx, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-missing-field-initializers",
+        subprocess.run([a.cxx, "-std=c++20", "-include", ENV_ON_H, "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-missing-field-initializers",
                         "-I" + str(a.headers), *(["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"] if a.sanitize else []),
                         str(cpp), "-o", str(exe)], check=True)
         for route in ["astc-all", "astc-layer", "unswizzle", "sample", "storage", "attachment"]:

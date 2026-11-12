@@ -63,6 +63,9 @@ void save() { saves++; }
 void apply_pad_layout(int) {}
 void apply_preset(int) { presets++; }
 void sync_preset_budgets(int) {}
+void env_release(const int*) {}   // (the environment's hold on a row: none here)
+void vram_budget_sync() {}
+constexpr int kVramMinimumOnly = 1;
 /* (stand-ins for the rest of set_row, which the Rumble strength row never reaches: the Upscaler's rows, the restart offer) */
 bool row_fixed(const int*) { return false; }
 int upscaler() { return 0; }
@@ -70,6 +73,9 @@ namespace ur {
 int step_upscaler(int, int, bool) { return 0; }
 int step(int, int v, int dir) { return v + dir; }
 int snap(int, int v) { return v; }
+int snap_render(int, int v) { return v; }   // (the slider)
+int step_engine(int, int, unsigned) { return 0; }   // (the Upscaler by engine)
+void step_render(int up, int v, int dir, int* u, int* r) { *u = up, *r = v + dir; }
 }
 namespace mr { constexpr int kMax = 8; }
 /* (the Game language row's hook in set_row: language.txt, not written here) */
@@ -85,6 +91,8 @@ bool can_mic() { return false; }
 /* (the Upscaler row's choices, which set_row steps through: the game's own only, here) */
 unsigned upscalers_available() { return 1; }
 void mic_chosen() {}
+void samplers_changed() {}
+void prompts_at_once(const Row&) {}
 // (set_row steps the Output row through vk_menu.cpp's step_output_choice (#1144): not what this checks)
 int step_output_choice(int id, int dir) { return id + dir; }
 %(set_row)s
@@ -175,8 +183,8 @@ def menu_fixture():
 def option_ids():
     """option 9 is the menu's Rumble strength, and no other option has its id"""
     replay, api = read("gpu", "vk", "vk_replay.cpp"), read("gpu", "vk", "vk_api.h")
-    value = {}   # (every HOS_OPT_* enum: the cheats', the motion rows' and DLSS's jitter)
-    for first, start, rest in re.findall(r"enum \{ (HOS_OPT_\w+) = (\d+), ([^}]*)\}", api):
+    value = {}   # (every HOS_OPT_* enum: the cheats', the motion rows', DLSS's jitter and one-name ones as Text size's)
+    for first, start, rest in re.findall(r"enum \{ (HOS_OPT_\w+) = (\d+)([^}]*)\}", api):
         names = [first] + [n.strip() for n in rest.split(",") if n.strip()]
         value.update({n: int(start) + i for i, n in enumerate(names)})
     table = block(replay, replay.index("t.option = [](int id) -> int {"))
