@@ -1445,7 +1445,7 @@ public partial class MainWindow : Window
             // target), so the tools are prepared again)
             try { Directory.Delete(System.IO.Path.Combine(Fork.Src, "python")); } catch (Exception) { }
             checks.Clear();
-            ShowPage(FilesPage);
+            ToFiles();   // (the one way back to the files page)
             RefreshMode();
             CheckAll();   // (the tools fetched again now, each part checked; then the game files' versions)
             return;
