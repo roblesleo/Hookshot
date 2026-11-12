@@ -1552,9 +1552,15 @@ public partial class MainWindow : Window
                   (File.Exists(System.IO.Path.Combine(folder, ".hookshot_fsr")) &&
                    File.Exists(System.IO.Path.Combine(folder, "amd_fidelityfx_upscaler_vk.dll")) &&
                    File.Exists(System.IO.Path.Combine(folder, "LICENSE-AMD-FSR-SDK.md")));
+        // (the saved tick builds with FSR 4 whether AMD's license was accepted or not, as StartBuild does: the license only
+        // decides whether AMD's runtime is fetched. A tick saved before the license was asked (Fsr, no FsrLicense) on a folder
+        // without make_game.py's mark was offered "Update to add AMD FSR 4" (UpscalerParts.Missing), and the update passed no
+        // --fsr: the folder was built again without FSR 4, the mark never written, and Update offered again, for good)
+        var args = new List<string> { "--update", folder };
+        if (saved?.Fsr == true) args.Add("--fsr");
         // (prepareNow: the saved choice, read in BeginUpdate. The launcher's Update and the --update start after a self-update never
         // ran ApplySettings, so the tick there is only its default)
-        Run(tools, ShaderStep.Args(new List<string> { "--update", folder }, prepareNow), keepRows: true, dlss: dlss, fsr: fsr);
+        Run(tools, ShaderStep.Args(args, prepareNow), keepRows: true, dlss: dlss, fsr: fsr);
     }
 
     // ================= the window =================
