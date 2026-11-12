@@ -83,6 +83,11 @@ struct Pool {
     VmaAllocation shadow_alloc = nullptr;
     VkDeviceAddress shadow_address = 0;
     std::vector<uint64_t> shadow_known;   // (a bit a page)
+    // (fork) how much of it the draws and dispatches bind: the bytes of the ranges bound since the last look (heat_now, added
+    // without the lock: a statistic), and that halved into a running sum every kHeatEpochs submissions (heat). What decides
+    // which pools hold the mirrors when they do not all fit (mirrors_swap)
+    uint64_t heat_now = 0, heat = 0;
+    uint64_t swapped_epoch = 0;   // (the submission its mirror was last given to a pool bound more, or taken from one)
 };
 uint64_t mem_rec_value = 0, mem_completed = 0;   // (the recording being made, and the GPU's progress)
 
@@ -2701,6 +2706,7 @@ BufferRef gpu_buffer_bind(uint64_t gpu, uint64_t size, bool written) {
         Pool* p = tl.p;
         const uint64_t off = guest - p->lo;
         if (p->last_value < mem_rec_value) p->last_value = mem_rec_value;
+        p->heat_now += size;
         if (!mirror_on() || !mirror_upload || p->mstate == Pool::MIRROR_REFUSED || p->mstate == Pool::MIRROR_WANTED)
             return remember({p->buffer, off, size, 0});
         if (p->mstate == Pool::MIRROR_ON && p->synced_epoch == mirror_epoch && p->sync_seg <= texture_segment())
@@ -2725,6 +2731,7 @@ BufferRef gpu_buffer_bind(uint64_t gpu, uint64_t size, bool written) {
     if (!p) return {};
     tl = {p, pools_gen.load(std::memory_order_relaxed)};
     if (p->last_value < mem_rec_value) p->last_value = mem_rec_value;
+    p->heat_now += size;
     const uint64_t off = guest - p->lo;
     if (!mirror_on() || !mirror_upload || p->mstate == Pool::MIRROR_REFUSED) {
         if (written) note_direct_write(*p, off, size);
@@ -2899,6 +2906,64 @@ void mirrors_give_back(uint64_t want_bytes) {   // (pools_mu held)
     }
 }
 
+// (fork) The mirrors go to the pools bound most. They were first come, first served: a pool that did not fit stayed in system
+// memory for as long as the ones before it were bound at all, however little. In Hyrule Field on a 6 GB card (749 MB of
+// mirrors) the three pools the fog and foliage compute passes work in (240, 160 and 64 MB) came last and stayed out: five
+// dispatches of 4.5-7.6 ms each, 55-63 ms of GPU time a frame against 25 with those pools mirrored (RTX 3060 Laptop,
+// 2026-11-12). Every kHeatEpochs submissions each pool's bound bytes are folded into its heat; a wanted pool that does not fit
+// takes the mirrors of pools whose heat for their size is under a quarter of its own, when theirs together are under half of
+// its heat. Only a pool bound four times its size lately asks: without that floor, pools of 16-32 MB bound a few MB now and
+// then took each other's mirrors in turn (133 swaps in two minutes of Hyrule Field, each a whole pool copied). A pool that
+// swapped either way stays as it is for kIdleEpochs submissions. RX_VK_MIRROR_SWAP=0: first come, as before
+constexpr uint64_t kHeatEpochs = 64;
+int64_t st_mirror_swaps = 0;
+bool mirror_swap_on() {
+    static const bool on = !getenv("RX_VK_MIRROR_SWAP") || atoi(getenv("RX_VK_MIRROR_SWAP")) != 0;
+    return on;
+}
+void mirrors_heat_fold() {   // (pools_mu held)
+    for (auto& [lo, p] : imported) p.heat = p.heat / 2 + p.heat_now, p.heat_now = 0;
+}
+void mirrors_swap() {   // (pools_mu held; for the pools in mirror_wanted that do not fit)
+    if (!mirror_swap_on()) return;
+    const uint64_t budget = mirror_budget();
+    std::vector<Pool*> wanted = mirror_wanted;
+    const auto density = [](const Pool* p) { return (double)p->heat / (double)std::max<uint64_t>(1, p->hi - p->lo); };
+    std::sort(wanted.begin(), wanted.end(), [&](const Pool* a, const Pool* b) { return density(a) > density(b); });
+    // (the mirrors are then made in this order: in the order the pools were bound, smaller ones wanted in the same submission
+    // took the room just freed, the pool it was freed for stayed out, and it asked again 600 submissions later: the 240 MB pool
+    // 17 times in three minutes, 8 pools' mirrors given back each time)
+    mirror_wanted = wanted;
+    uint64_t taken = 0;   // (of the budget, by the wanted pools gone through so far)
+    for (Pool* w : wanted) {
+        const uint64_t n = w->hi - w->lo;
+        if (n > (1ull << 30) || n > budget) continue;
+        if (mirror_bytes + taken + n <= budget) { taken += n; continue; }
+        if (w->heat < 4 * n || (w->swapped_epoch && mirror_epoch - w->swapped_epoch < kIdleEpochs)) continue;   // (bound 4x its size lately)
+        const uint64_t need = mirror_bytes + taken + n - budget;
+        std::vector<Pool*> cold;
+        for (auto& [lo, p] : imported)
+            if (p.mstate == Pool::MIRROR_ON && !p.inherit_pending && density(&p) * 4 < density(w) &&
+                !(p.swapped_epoch && mirror_epoch - p.swapped_epoch < kIdleEpochs))
+                cold.push_back(&p);
+        std::sort(cold.begin(), cold.end(), [&](const Pool* a, const Pool* b) { return density(a) < density(b); });
+        uint64_t freed = 0, heat = 0;
+        size_t k = 0;
+        while (k < cold.size() && freed < need) freed += cold[k]->hi - cold[k]->lo, heat += cold[k]->heat, k++;
+        if (freed < need || heat * 2 >= w->heat) continue;
+        for (size_t i = 0; i < k; i++) {
+            cold[i]->swapped_epoch = mirror_epoch;
+            mirror_free(*cold[i]);
+        }
+        w->swapped_epoch = mirror_epoch;
+        taken += n;
+        if (st_mirror_swaps++ < 40)
+            logf("vk: pool %#llx (%llu MB, %llu MB bound lately) takes the mirrors of %zu pools bound less (%llu MB, %llu MB bound lately)",
+                 (unsigned long long)w->lo, (unsigned long long)(n >> 20), (unsigned long long)(w->heat >> 20), k,
+                 (unsigned long long)(freed >> 20), (unsigned long long)(heat >> 20));
+    }
+}
+
 // ---- imports given back under pressure (16 GB PCs). The driver pins every imported pool and counts it in the system heap
 // the GPU reaches, whose budget is about half the PC's RAM (7.5 GB of 16): imports were kept for the session, the heap
 // went past its budget (7758 of 7503 MB on an RTX 3060 with 16 GB) and new imports failed with VK_ERROR_OUT_OF_DEVICE_MEMORY:
@@ -2998,7 +3063,9 @@ void memory_begin_submission() {
     {
         uint64_t want = 0;
         for (Pool* p : mirror_wanted) want += p->hi - p->lo;
+        if (mirror_epoch % kHeatEpochs == 0) mirrors_heat_fold();
         if (mirror_epoch % 64 == 0 || mirror_bytes + want > mirror_budget()) mirrors_give_back(want);
+        if (mirror_bytes + want > mirror_budget()) mirrors_swap();
     }
     if (mirror_wanted.empty()) return;
     for (Pool* p : mirror_wanted) mirror_make(*p);
@@ -3616,6 +3683,27 @@ void memory_end_submission(VkCommandBuffer cmd) {
                      "%.1f MB in all, a range counted once a submit): %s", all / 1048576.0, ds.c_str());
             }
             direct_by_pool.clear(), direct_bytes_by_pool.clear();
+            {   // (fork) the pools bound most, with their mirrors or without: what mirrors_swap goes by
+                std::vector<const Pool*> hot;
+                for (const auto& [lo, q] : imported)
+                    if (q.heat) hot.push_back(&q);
+                std::sort(hot.begin(), hot.end(), [](const Pool* a, const Pool* b) { return a->heat > b->heat; });
+                std::string hs;
+                uint64_t on_bytes = 0, on_heat = 0, off_heat = 0;
+                for (const Pool* q : hot) (q->mstate == Pool::MIRROR_ON ? on_heat : off_heat) += q->heat;
+                for (const auto& [lo, q] : imported)
+                    if (q.mstate == Pool::MIRROR_ON) on_bytes += q.hi - q.lo;
+                for (size_t i = 0; i < hot.size() && i < 48; i++) {
+                    char b[96];
+                    snprintf(b, sizeof b, " %#llx %llu MB %s %llu;", (unsigned long long)hot[i]->lo,
+                             (unsigned long long)((hot[i]->hi - hot[i]->lo) >> 20), hot[i]->mstate == Pool::MIRROR_ON ? "M" : "-",
+                             (unsigned long long)(hot[i]->heat >> 20));
+                    hs += b;
+                }
+                logf("vk:   pools by the MB bound lately (M: mirrored; %llu MB of mirrors hold %llu MB bound, %llu MB bound is in guest "
+                     "memory; %lld swaps):%s", (unsigned long long)(on_bytes >> 20), (unsigned long long)(on_heat >> 20),
+                     (unsigned long long)(off_heat >> 20), (long long)st_mirror_swaps, hs.c_str());
+            }
         }
     }
     static const bool no_writeback = env_on("RX_VK_NO_WRITEBACK");   // (an experiment: none)
