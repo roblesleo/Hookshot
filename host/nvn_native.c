@@ -1028,6 +1028,7 @@ static int set_shaders(nvn_prog *o, int n, const uint8_t *sd, int stride) {
         }
     }
     o->serial = new_serial();
+    rx_nvn_program_created(o);   /* (the stages are in memory now: the back end loads what it kept ready for them) */
     return 1;
 }
 NV(nvnProgramSetShaders) { RET(set_shaders((nvn_prog *)P(0), I(1), (const uint8_t *)P(2), 16)); }
@@ -2494,6 +2495,7 @@ NV(nvnQueuePresentTexture) {
     nvn_win *o = (nvn_win *)P(1);
     const int i = I(2);
     if (i < 0 || i >= o->ntex) die("present of window texture %d", i);
+    HOS_CHAIN(HOS_CHAIN_PRESENT, (uint64_t)i);
     const int trace = hos_vi_present_trace_enabled();
     int64_t phases[4] = {0};
     if (trace) phases[0] = hos_now_ns();

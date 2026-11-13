@@ -33,6 +33,7 @@
 #include "shader_recompiler/backend/spirv/mma_layout.h"
 #include "shader_recompiler/ir_opt/passes.h"
 #include "shader_recompiler/ir_opt/fragment_output_guard.h"
+#include "shader_recompiler/ir_opt/scene_tonemap_pass.h"
 #include "shader_recompiler/backend/bindings.h"
 #include "shader_recompiler/backend/spirv/emit_spirv.h"
 #include "shader_recompiler/environment.h"
@@ -54,6 +55,7 @@
 #include "vk_jobs.h"
 #include "vk_draw.h"
 #include "vk_progcache.h"
+#include "vk_menu.h"
 
 // (EvilOOT, RX_VK_PTR_DIAG) the pointer pass's counts for this thread's translations
 // (global_memory_to_storage_buffer_pass.cpp, declared by hand so no Eden header changes)
@@ -129,6 +131,9 @@ struct Code {
     // 31:16; +0x5f the output topology, 1 points, 3 triangles)
     uint32_t mesh_threads = 0, payload_bytes = 0, max_vertices = 0, max_primitives = 0, topology = 0;
     bool header_only = false;       // a graphics header and no code (NVN2's per-primitive output map of a mesh program)
+    // (hookshot) a fragment stage with the game's tone map fit's five constants in its code: a scene mapping program, which
+    // PsychoV35 may take (scene_tonemap_for)
+    bool scene_fit = false;
     uint8_t sph[sizeof(Shader::ProgramHeader)]{};
     bool ok = false;
     std::string why;   // (hookshot) not ok: why, for the log ("1 failed" alone said nothing of which program, or why)
@@ -176,6 +181,15 @@ Code parse_code(const uint8_t* ctl, const std::vector<uint8_t>& area) {
     std::memcpy(&st, ctl + 0x56, 2);
     c.key = code_key(ctl, area.data(), end);
     c.stage = st;
+    if (st == 1) {
+        static constexpr float kFit[] = {2.51f, 0.03f, 2.43f, 0.59f, 0.14f};
+        c.scene_fit = true;
+        for (const float f : kFit) {
+            uint8_t bits[4];
+            std::memcpy(bits, &f, 4);
+            c.scene_fit = c.scene_fit && std::search(area.begin(), area.end(), bits, bits + 4) != area.end();
+        }
+    }
     if (st == 6 || st == 7) {
         uint32_t w58, w60;
         std::memcpy(&w58, ctl + 0x58, 4), std::memcpy(&w60, ctl + 0x60, 4);
@@ -250,6 +264,19 @@ Code parse_code(const uint8_t* ctl, const std::vector<uint8_t>& area) {
         }
     }
     Shader::Ampere::native_matrix_multiply = dev.native_mma && !graphics && native_key;
+    {   // (super build) RX_VK_LOWER_SKIP=<key prefix,...>: those programs left unlowered, as if they did not lower (a bisection)
+        static const std::string skip = getenv("RX_VK_LOWER_SKIP") ? getenv("RX_VK_LOWER_SKIP") : "";
+        if (!skip.empty()) {
+            char hex[24];
+            snprintf(hex, sizeof hex, "%016llx", (unsigned long long)c.key);
+            for (size_t at = 0; at < skip.size();) {
+                const size_t e = skip.find(',', at);
+                const std::string t = skip.substr(at, e == std::string::npos ? std::string::npos : e - at);
+                if (!t.empty() && !strncmp(hex, t.c_str(), t.size())) return c;
+                at = e == std::string::npos ? skip.size() : e + 1;
+            }
+        }
+    }
     const auto lowered = Shader::Ampere::LowerToMaxwell(native);
     if (lowered && lowered.register_map_words) {   // (hookshot) which programs run with extended registers
         static std::atomic<int> logged{0};
@@ -549,6 +576,7 @@ Shader::Profile make_profile() {
     p.support_typeless_image_loads = true;
     p.support_demote_to_helper_invocation = true;
     p.support_int64_atomics = true;
+    p.support_float32_atomic_add = dev.float_atomic_add;   // (one OpAtomicFAddEXT for a float add, not a compare-exchange loop: vk_main.cpp)
     p.support_derivative_control = true;
     p.support_native_ndc = false;   // (the vertex stage converts NVN's -1..1 depth: RuntimeInfo::convert_depth_mode)
     p.support_scaled_attributes = false;   // (*_UI2F / *_I2F read as integers, converted in the shader: R32 has no scaled format)
@@ -569,6 +597,9 @@ Shader::Profile make_profile() {
     // (RX_VK_FRAG_SHUFFLE_FALLBACK=0 or 1, a test: the fragment stages' shuffles native or through broadcasts, whatever the
     // driver; in the cache's stamp)
     if (const char* e = getenv("RX_VK_FRAG_SHUFFLE_FALLBACK")) p.has_broken_spirv_fragment_shuffle = e[0] == '1';
+    // (hookshot) gathers nudged by 1/512 of a texel on AMD's and Intel's drivers, as Eden and Lichii have it (vk_vendor.h; in the
+    // cache's stamp)
+    p.need_gather_subpixel_offset = dev.fixes.gather_offset;
     p.min_ssbo_alignment = storage_binding_align();   // (at least 16: vk_internal.h)
     return p;
 }
@@ -839,6 +870,14 @@ uint64_t portable_variant(const Program& p) {
     return generated_stage(p) == SIZE_MAX ? p.variant : answers_hash_of(answers_portable(p));
 }
 namespace {
+/// What an unbound slot answers: the type its instruction declares (record_answers; program_find_plain looks for a variant whose
+/// slots all answer it)
+uint8_t declared_answer(const Program& p, size_t stage, size_t desc, bool image) {
+    const auto& info = p.stages[stage].info;
+    if (image) return (uint8_t)(info.image_descriptors[desc].is_integer ? 0x80 : 0);
+    const auto& d = info.texture_descriptors[desc];
+    return (uint8_t)((uint8_t)d.type | (d.is_integer ? 0x80 : 0));
+}
 // (an unbound slot answers what the instruction itself says: nothing to tell the variants apart by, and a program prepared before
 // the game, with nothing bound at all, comes out as the plain variant of each of its slots)
 void record_answers(Program& p, const NvnState& s) {
@@ -856,14 +895,13 @@ void record_answers(Program& p, const NvnState& s) {
         for (size_t i = 0; i < list.size(); i++)
             if (list[i].count == 1) {
                 const uint32_t h = descriptor_handle(s, p.stages[k], list[i]);
-                p.answers.push_back({(uint16_t)k, (uint16_t)i,
-                                     h ? texture_answer(h) : (uint8_t)((uint8_t)list[i].type | (list[i].is_integer ? 0x80 : 0))});
+                p.answers.push_back({(uint16_t)k, (uint16_t)i, h ? texture_answer(h) : declared_answer(p, k, i, false)});
             }
         const auto& images = p.stages[k].info.image_descriptors;
         for (size_t i = 0; i < images.size(); i++)
             if (images[i].count == 1) {
                 const uint32_t h = descriptor_handle(s, p.stages[k], images[i]);
-                p.answers.push_back({(uint16_t)k, (uint16_t)i, h ? answer_of(h, true) : (uint8_t)(images[i].is_integer ? 0x80 : 0), true});
+                p.answers.push_back({(uint16_t)k, (uint16_t)i, h ? answer_of(h, true) : declared_answer(p, k, i, true), true});
             }
     }
     for (Program::Answer& a : p.answers) a.type = canonical_answer(p, a, a.type);
@@ -961,8 +999,13 @@ void written_types(const Code* fs, const uint8_t color_types[8], uint8_t out[8])
     for (int i = 0; i < 8; i++) out[i] = fs && header_of(*fs).ps.HasOutputComponents(i) ? color_types[i] : 0;
 }
 /// A vertex and fragment program's key: their code, and the vertex input and colour output types that change what they translate to
-uint64_t graphics_key(const Code& vs, const Code* fs, const uint32_t vattr[16], const uint8_t color_types[8]) {
+/// (hookshot) Whether this fragment stage's program is to have PsychoV35 for its scene tone map (scene_tonemap_pass.h): a scene
+/// mapping program while the Tone mapper row asks for it. Its own key, so the row's change translates only these programs
+bool scene_tonemap_for(const Code* fs) { return fs && fs->scene_fit && scene_tonemap_on(); }
+uint64_t graphics_key(const Code& vs, const Code* fs, const uint32_t vattr[16], const uint8_t color_types[8],
+                      bool tonemap = false) {
     uint64_t key = vs.key ^ (fs ? fs->key * 31 : 0);
+    if (tonemap) key = hash_bytes("psychov35", 9, key);
     for (int i = 0; i < 16; i++) {
         const auto used = header_of(vs).vtg.InputGeneric((size_t)i);
         const bool read = used[0] || used[1] || used[2] || used[3];
@@ -1151,12 +1194,19 @@ uint64_t translator_stamp() {
         // NaN guard, the matrix layout measured on this device. Without them a cache made on one GPU was used on another (a laptop's
         // integrated and dedicated GPUs), and RX_VK_NO_INVARIANT / RX_VK_NAN_GUARD did nothing for programs already cached)
         using namespace Shader::Backend::SPIRV;
-        const uint32_t flags = (position_invariant ? 1u : 0u) | (frag_nan_guard ? 2u : 0u) | (mma_software ? 4u : 0u);
+        // (and the vendor fixes of the translation, vk_vendor.h: out-of-bounds fetches, NaN tests, the gather offset)
+        const uint32_t flags = (position_invariant ? 1u : 0u) | (frag_nan_guard ? 2u : 0u) | (mma_software ? 4u : 0u) |
+                               (global_table_loop ? 8u : 0u) | (fetch_bounds ? 16u : 0u) | (nan_bits ? 32u : 0u) |
+                               (profile().need_gather_subpixel_offset ? 64u : 0u) | (fetch_bounds_buffers ? 128u : 0u);
         add(&flags, sizeof flags);
         add(mma_order_a.data(), sizeof(uint32_t) * mma_order_a.size());
         add(mma_order_b.data(), sizeof(uint32_t) * mma_order_b.size());
         add(mma_order_c.data(), sizeof(uint32_t) * mma_order_c.size());
     }
+    // (and whether a float add is the GPU's own atomic (make_profile): a program made with OpAtomicFAddEXT is no use to a GPU
+    // without it, nor one made with RX_VK_NATIVE_FADD=0's loop wanted back once it is native again)
+    const uint32_t float_add = profile().support_float32_atomic_add ? 1u : 0u;
+    add(&float_add, sizeof float_add);
     // (RX_VK_GP_, not RX_VK_GP: that took RX_VK_GPL with it, which changes no translation, and switching the stage libraries on
     // threw the whole program cache away. What the libraries are good for is the prepare's second stamp, vk_draw.cpp warmed_stamp)
     // (and every other switch the translation reads: the storage buffer pass's (RX_VK_NO_CBUF_LOAD_RULE, RX_VK_PTR_SPLIT_FALLBACK,
@@ -1269,7 +1319,14 @@ void translate_into(Program& p, const NvnState& s, const Code* vsc, const Code* 
             Env vs_env{s, *vsc, Shader::Stage::VertexB};
             auto vs = translate(vs_env, true);
             questions += vs_env.texture_questions;
+            std::unique_ptr<Translation> fs;
+            if (fsc) {
+                Env fs_env{s, *fsc, Shader::Stage::Fragment};
+                fs = translate(fs_env, true);
+                questions += fs_env.texture_questions;
+            }
             Shader::RuntimeInfo vrt{};
+            Shader::RuntimeInfo frt{};
             if (!vs->program.info.stores[Shader::IR::Attribute::PointSize]) vrt.fixed_state_point_size = 1.0f;
             // (an attribute the draw leaves unset: build_graphics gives it a stream of (0, 0, 0, 1). It took Disabled here, under the
             // same key)
@@ -1280,6 +1337,20 @@ void translate_into(Program& p, const NvnState& s, const Code* vsc, const Code* 
             // load result for the grid dimensions in the coordinate clamps. The SPIR-V names the right result.
             constexpr uint64_t kDekuWebVertexCode = 0xb449bcdb69b36a8aull;
             vrt.inline_global_128_loads = dev.props.vendorID == 0x10DE && vsc->key == kDekuWebVertexCode;
+            // (OoT's Royal Family Tomb water writes clip.xy/clip.w as a noperspective varying. Clipping a
+            // vertex with w close to zero then makes AMD interpolate the wrong depth, whose exp2 overflows
+            // into the red dotted line. Write it times Position.w and interpolate perspective-correct in
+            // the fragment stage, where multiplying by FragCoord.w restores the screen-linear value.)
+            // Indexed fragment reads cannot undo that multiply, transform feedback would capture the
+            // scaled value, and mesh pipelines keep their existing per-primitive interpolation.
+            if (fs && !fs->program.info.loads_indexed_attributes && vrt.xfb_count == 0) {
+                for (size_t i = 0; i < fs->program.info.interpolation.size(); ++i) {
+                    if (fs->program.info.interpolation[i] == Shader::Interpolation::NoPerspective) {
+                        vrt.noperspective_outputs.set(i);
+                    }
+                }
+                frt.scaled_noperspective_inputs = vrt.noperspective_outputs.any();
+            }
             Stage v;
             v.nvn_stage = 0;
             const std::vector<uint32_t> vspirv = Shader::Backend::SPIRV::EmitSPIRV(profile_graphics(VK_SHADER_STAGE_VERTEX_BIT), vrt, vs->program, bindings);
@@ -1299,13 +1370,16 @@ void translate_into(Program& p, const NvnState& s, const Code* vsc, const Code* 
             v.vk_stage = VK_SHADER_STAGE_VERTEX_BIT;
             v.c1 = vsc->c1;
             p.stages.push_back(std::move(v));
-            if (fsc) {
-                Env fs_env{s, *fsc, Shader::Stage::Fragment};
-                auto fs = translate(fs_env, true);
-                questions += fs_env.texture_questions;
-                Shader::RuntimeInfo frt{};
+            if (fs) {
                 frt.previous_stage_stores = vs->program.info.stores;
                 for (int i = 0; i < 8; i++) frt.color_output_types[i] = static_cast<Shader::AttributeType>(color_types[i]);
+                if (p.scene_tonemap) {   // (the HDR tone mapper row: PsychoV35; before the NaN guard, which then guards it)
+                    const char* why = Shader::Optimization::SceneToneMapPass(fs->program);
+                    static std::atomic<int> told{0};
+                    if (told++ < 64)
+                        logf("vk: program %016llx: scene tone map %s%s", (unsigned long long)p.key, why ? "left as the game's: " : "PsychoV35",
+                             why ? why : "");
+                }
                 if (Shader::Backend::SPIRV::frag_nan_guard) {   // (RX_VK_NAN_GUARD=0: off, vk_coopmat.cpp coopmat_init)
                     uint32_t float_targets = 0;
                     for (int i = 0; i < 8; i++)
@@ -1766,6 +1840,15 @@ thread_local ProgFast prog_fast[2];
 const Program* program_for(const NvnState& s, ProgramKind kind, const uint8_t color_types[8]) {
     if (!s.has_prog) return nullptr;
     if (kind == ProgramKind::Mesh) return mesh_program_for(s, color_types);
+    {   // (the HDR tone mapper changed: the picks before it name the other variant of the scene mapping programs)
+        static thread_local int tonemap_seen = -1;
+        const int tonemap_now = scene_tonemap_on() ? 1 : 0;
+        if (tonemap_now != tonemap_seen) {
+            tonemap_seen = tonemap_now;
+            picks.clear();
+            prog_fast[0].on = prog_fast[1].on = false;
+        }
+    }
     const bool compute = kind == ProgramKind::Compute;
     static int64_t st_hit, st_none, st_differ, st_calls, st_by_tex;   // (logged now and then: how the cache does)
     if (++st_calls % 200000 == 0)
@@ -1845,7 +1928,8 @@ const Program* program_pick(const NvnState& s, ProgramKind kind, const uint8_t c
         if (logged++ < 40) log_program_stages(s, "dropped stages");
     }
     // the variants of these stages, for these vertex input types and colour output types
-    const uint64_t key = compute ? stage_code[5]->key : graphics_key(*stage_code[0], stage_code[1], s.vattr, color_types);
+    const bool tonemap = !compute && scene_tonemap_for(stage_code[1]);
+    const uint64_t key = compute ? stage_code[5]->key : graphics_key(*stage_code[0], stage_code[1], s.vattr, color_types, tonemap);
     auto& variants = programs[key];
     program_cache_load(key, variants);
     const uint64_t codes[4] = {stage_code[compute ? 5 : 0]->key, !compute && stage_code[1] ? stage_code[1]->key : 0, 0, 0};
@@ -1861,6 +1945,7 @@ const Program* program_pick(const NvnState& s, ProgramKind kind, const uint8_t c
     auto p = std::make_unique<Program>();
     p->key = key;
     p->compute = compute;
+    p->scene_tonemap = tonemap;
     std::memcpy(p->codes, codes, sizeof codes);
     Program* raw = p.get();
     variants.push_back(std::move(p));
@@ -2124,10 +2209,12 @@ SeedVariants seed_compute(size_t i, size_t cap, const std::function<void(Program
         std::lock_guard lk(disk_mu);
         if (auto it = disk_records.find(cs->key); it != disk_records.end())
             for (const DiskRecord& d : it->second) {
-                std::vector<uint8_t> data(d.size);
-                _fseeki64(disk_in, d.at, SEEK_SET);
-                if (fread(data.data(), 1, d.size, disk_in) != d.size) continue;
-                Reader rd{data.data(), data.data() + data.size()};
+                std::vector<uint8_t> data(d.size), plain;
+                if (_fseeki64(disk_in, d.at, SEEK_SET) || fread(data.data(), 1, d.size, disk_in) != d.size) continue;
+                const uint8_t* payload = nullptr;
+                size_t payload_size = 0;
+                if (!program_cache_payload(data.data(), data.size(), d.kind, plain, &payload, &payload_size)) continue;
+                Reader rd{payload, payload + payload_size};
                 Program q;
                 rd.get<uint32_t>();
                 rd.list(q.answers);
@@ -2248,8 +2335,10 @@ std::unique_ptr<Program> seed_program_of(const uint64_t code[3], bool mesh, cons
     if (!by_stage[want[0]]) return nullptr;
     return seed_translate(by_stage, attributes, color_types, key_out);
 }
-const Program* seed_variant_of(const uint64_t code[3], bool mesh, const uint32_t attributes[16], const uint8_t color_types[8],
-                               const std::vector<uint8_t>& questions, const std::vector<Program::Answer>& answers) {
+/// (seed_variant_of, seed_plain_of) the variant translated with the questions and answers given, or with none: nothing bound, each
+/// slot answers what its instruction declares (as seed_translate's program), and the questions asked are noted
+static const Program* seed_variant_made(const uint64_t code[3], bool mesh, const uint32_t attributes[16], const uint8_t color_types[8],
+                                        const std::vector<uint8_t>* questions, const std::vector<Program::Answer>* answers) {
     const SeedStage* by_stage[8]{};
     const int want[3] = {mesh ? 7 : 0, 1, mesh ? 6 : -1};
     for (int k = 0; k < 3; k++) {
@@ -2272,13 +2361,14 @@ const Program* seed_variant_of(const uint64_t code[3], bool mesh, const uint32_t
     blank->nvattr = 16;
     std::memcpy(blank->vattr, attributes, sizeof blank->vattr);
     auto p = std::make_unique<Program>();
+    p->scene_tonemap = !mesh && scene_tonemap_for(fs);
     p->key = mesh ? mesh_key(by_stage[6] ? &code_of[6] : nullptr, code_of[7], fs, nullptr, color_types)
-                  : graphics_key(code_of[0], fs, attributes, color_types);
+                  : graphics_key(code_of[0], fs, attributes, color_types, p->scene_tonemap);
     if (mesh && !dev.mesh_shader && !dev.mesh_fallback) return nullptr;
     p->fallback = mesh && dev.uses_mesh_fallback(by_stage[6] != nullptr);
     p->mesh = mesh && !p->fallback;
     p->codes[0] = code[0], p->codes[1] = code[1], p->codes[2] = code[2];
-    questions_in = &questions, questions_at = 0, answers_in = &answers;
+    if (questions) questions_in = questions, questions_at = 0, answers_in = answers;
     struct Reset { ~Reset() { questions_in = nullptr, answers_in = nullptr; } } reset;
     if (mesh) translate_mesh_into(*p, *blank, by_stage[6] ? &code_of[6] : nullptr, code_of[7], nullptr, fs, color_types);
     else translate_into(*p, *blank, &code_of[0], fs, nullptr, color_types);
@@ -2299,6 +2389,13 @@ const Program* seed_variant_of(const uint64_t code[3], bool mesh, const uint32_t
     variants.push_back(std::move(p));
     return variants.back().get();
 }
+const Program* seed_variant_of(const uint64_t code[3], bool mesh, const uint32_t attributes[16], const uint8_t color_types[8],
+                               const std::vector<uint8_t>& questions, const std::vector<Program::Answer>& answers) {
+    return seed_variant_made(code, mesh, attributes, color_types, &questions, &answers);
+}
+const Program* seed_plain_of(const uint64_t code[3], bool mesh, const uint32_t attributes[16], const uint8_t color_types[8]) {
+    return seed_variant_made(code, mesh, attributes, color_types, nullptr, nullptr);
+}
 
 const Program* program_find_portable(uint64_t key, uint64_t variant) {
     std::lock_guard lk(shader_mu);
@@ -2306,6 +2403,28 @@ const Program* program_find_portable(uint64_t key, uint64_t variant) {
     if (it == programs.end()) return nullptr;
     for (auto& p : it->second)
         if (p->ready.load(std::memory_order_acquire) && !p->failed && portable_variant(*p) == variant) return p.get();
+    return nullptr;
+}
+const Program* program_find_plain(uint64_t key) {
+    std::lock_guard lk(shader_mu);
+    auto it = programs.find(key);
+    if (it == programs.end()) return nullptr;
+    for (auto& p : it->second) {
+        if (!p->ready.load(std::memory_order_acquire) || p->failed) continue;
+        // (an answer for each slot record_answers counts, each the type its instruction declares, as record_answers makes it with
+        // nothing bound: not a variant that asked nothing, which stands for any textures)
+        size_t slots = 0;
+        for (const Stage& st : p->stages) {
+            for (const auto& d : st.info.texture_descriptors) slots += d.count == 1;
+            for (const auto& d : st.info.image_descriptors) slots += d.count == 1;
+        }
+        bool plain = p->answers.size() == slots;
+        for (size_t i = 0; plain && i < p->answers.size(); i++) {
+            const Program::Answer& a = p->answers[i];
+            plain = answers_fit(*p, {a}) && a.type == canonical_answer(*p, a, declared_answer(*p, a.stage, a.desc, a.image));
+        }
+        if (plain) return p.get();
+    }
     return nullptr;
 }
 const Program* program_find(uint64_t key, uint64_t variant) {
@@ -2330,6 +2449,101 @@ void program_released(const nvn_prog* p) {
     if (!p) return;
     std::lock_guard lk(shader_mu);
     codes.erase(p->serial);
+}
+
+// ---- (hookshot) A guest program as the game makes it (nvnProgramSetShaders), before any draw: vk_programs.cpp. Its stages are
+// read from the game's memory and hashed as a draw's are (code_key), but not lowered: only what names the program (the stages'
+// code keys) and what its key is made of (graphics_key, mesh_key: the headers). Kept by the program's serial, under a lock of
+// their own: the game's thread calls this, and shader_mu is held through whole translations ----
+namespace {
+std::mutex created_mu;
+std::unordered_map<uint64_t, std::vector<Code>> created_codes;
+Code read_code_head(const nvn_stage_data& sd) {
+    Code c;
+    uint8_t ctl[kControlSize];
+    uint32_t end = 0;
+    if (!sd.control || !sd.data || !host->gpu_read(sd.control, ctl, sizeof ctl) || !control_end(ctl, &end)) return c;
+    std::vector<uint8_t> area(end);
+    if (!host->gpu_read(sd.data, area.data(), end)) return c;
+    uint32_t len;
+    uint16_t st;
+    std::memcpy(&len, ctl + 0x38, 4);
+    std::memcpy(&st, ctl + 0x56, 2);
+    c.key = code_key(ctl, area.data(), end);
+    c.stage = st;
+    if (st == 1) {   // (as parse_code: a scene mapping program's fragment stage)
+        static constexpr float kFit[] = {2.51f, 0.03f, 2.43f, 0.59f, 0.14f};
+        c.scene_fit = true;
+        for (const float f : kFit) {
+            uint8_t bits[4];
+            std::memcpy(bits, &f, 4);
+            c.scene_fit = c.scene_fit && std::search(area.begin(), area.end(), bits, bits + 4) != area.end();
+        }
+    }
+    const bool graphics = st != 5;
+    if (graphics) std::memcpy(c.sph, area.data(), std::min<size_t>(sizeof c.sph, area.size()));
+    c.header_only = graphics && len <= kAmpereHeader + 16;
+    c.ok = true;
+    return c;
+}
+struct CreatedStages {
+    const Code *vs = nullptr, *fs = nullptr, *task = nullptr, *mesh = nullptr, *prim = nullptr, *compute = nullptr;
+};
+CreatedStages created_stages(const std::vector<Code>& cs) {
+    CreatedStages o;
+    for (const Code& c : cs) {
+        if (c.header_only) o.prim = &c;
+        else if (c.stage == 0) o.vs = &c;
+        else if (c.stage == 1) o.fs = &c;
+        else if (c.stage == 5) o.compute = &c;
+        else if (c.stage == 6) o.task = &c;
+        else if (c.stage == 7) o.mesh = &c;
+    }
+    return o;
+}
+} // namespace
+
+CreatedProgram program_created_read(const nvn_prog& prog) {
+    CreatedProgram out;
+    std::vector<Code> cs;
+    for (uint32_t i = 0; i < prog.nstage && i < 6; i++) {
+        Code c = read_code_head(prog.sd[i]);
+        if (c.ok) cs.push_back(std::move(c));
+    }
+    const CreatedStages st = created_stages(cs);
+    out.stages = (int)cs.size();
+    if (st.compute) {
+        out.compute = true, out.codes[0] = st.compute->key;
+    } else if (st.mesh) {
+        out.mesh = true, out.codes[0] = st.mesh->key, out.codes[1] = st.fs ? st.fs->key : 0;
+        out.codes[2] = st.task ? st.task->key : 0, out.codes[3] = st.prim ? st.prim->key : 0;
+    } else if (st.vs) {
+        out.codes[0] = st.vs->key, out.codes[1] = st.fs ? st.fs->key : 0;
+    } else {
+        return out;
+    }
+    out.ok = true;
+    std::lock_guard lk(created_mu);
+    created_codes[prog.serial] = std::move(cs);
+    return out;
+}
+uint64_t program_created_key(uint64_t serial, const uint32_t vattr[16], const uint8_t color_types[8]) {
+    std::lock_guard lk(created_mu);
+    const auto it = created_codes.find(serial);
+    if (it == created_codes.end()) return 0;
+    const CreatedStages st = created_stages(it->second);
+    if (st.compute) return st.compute->key;
+    if (st.mesh) return mesh_key(st.task, *st.mesh, st.fs, st.prim, color_types);
+    if (!st.vs) return 0;
+    const bool tonemap = scene_tonemap_for(st.fs);
+    return graphics_key(*st.vs, st.fs, vattr, color_types, tonemap);
+}
+void program_created_forget(uint64_t serial) {
+    std::lock_guard lk(created_mu);
+    created_codes.erase(serial);
+}
+int64_t shader_translated() {
+    return st_translated.load();
 }
 
 } // namespace mkwvk

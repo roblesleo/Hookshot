@@ -403,12 +403,24 @@ static int copy_part_tree(const wchar_t *from, const wchar_t *to) {
     return ok;
 }
 
+/* A folder tar.exe has just written can stay open a few seconds in an antivirus scan or the search indexer: MoveFileW then fails
+   with access denied or a sharing violation. Those are tried again for up to 20 s, any other error is returned at once.
+   On failure GetLastError is the last try's. */
+static BOOL move_retry(const wchar_t *from, const wchar_t *to) {
+    for (int tries = 1;; tries++) {
+        if (MoveFileW(from, to)) return TRUE;
+        const DWORD error = GetLastError();
+        if ((error != ERROR_ACCESS_DENIED && error != ERROR_SHARING_VIOLATION) || tries == 80) return FALSE;
+        Sleep(250);
+    }
+}
+
 static int publish_install(const wchar_t *staged, const wchar_t *final, int portable) {
-    if (!portable || GetFileAttributesW(final) == INVALID_FILE_ATTRIBUTES) return MoveFileW(staged, final) != 0;
+    if (!portable || GetFileAttributesW(final) == INVALID_FILE_ATTRIBUTES) return move_retry(staged, final) != 0;
     wchar_t backup[MAX_PATH];
     const int n = home_path(backup, L"%ls.rollback-%lu-%llu", final, GetCurrentProcessId(), GetTickCount64());
     if (n < 0 || n >= MAX_PATH || !MoveFileW(final, backup)) return 0;
-    if (!MoveFileW(staged, final)) {
+    if (!move_retry(staged, final)) {
         const DWORD error = GetLastError();
         /* If restoration is prevented externally, the complete old installation remains in .rollback-* for recovery. */
         MoveFileW(backup, final);
@@ -625,6 +637,34 @@ static int nightly_tag(const char *s) {
 #define HOOKSHOT_SETUP_RELEASE ""
 #endif
 
+/* The shipping Builder is a directory-based, self-contained WPF app: an EXE alone cannot start it.
+   Keep this startup contract in step with the publish format; this is not an integrity check of every assembly. */
+static int builder_ready(const wchar_t *exe) {
+    static const wchar_t *const required[] = {
+        L"HookshotBuilder.dll", L"HookshotBuilder.deps.json", L"HookshotBuilder.runtimeconfig.json",
+        L"hostfxr.dll", L"hostpolicy.dll", L"coreclr.dll", L"System.Private.CoreLib.dll",
+        L"WindowsBase.dll", L"PresentationCore.dll", L"PresentationFramework.dll",
+        L"PresentationNative_cor3.dll", L"wpfgfx_cor3.dll"
+    };
+    wchar_t path[MAX_PATH];
+    const size_t n = wcslen(exe);
+    if (n >= MAX_PATH) return 0;
+    wcscpy(path, exe);
+    wchar_t *name = wcsrchr(path, L'\\');
+    if (!name) return 0;
+    const size_t prefix = (size_t)(++name - path);
+    for (size_t i = 0; i <= sizeof required / sizeof *required; i++) {
+        if (i) {
+            if (prefix + wcslen(required[i - 1]) >= MAX_PATH) return 0;
+            wcscpy(name, required[i - 1]);
+        }
+        WIN32_FILE_ATTRIBUTE_DATA info;
+        if (!GetFileAttributesExW(path, GetFileExInfoStandard, &info) ||
+            (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (!info.nFileSizeHigh && !info.nFileSizeLow)) return 0;
+    }
+    return 1;
+}
+
 static const char *manifest_url(void) {
     static char u[1024];
     const char *e = getenv("HOOKSHOT_SETUP_LIST");
@@ -734,7 +774,7 @@ static DWORD WINAPI work(LPVOID unused) {
     home_path(exe, L"%ls\\%ls", install, wrun);
     for (wchar_t *q = exe; *q; q++) if (*q == L'/') *q = L'\\';
 
-    if (repair || GetFileAttributesW(marker) == INVALID_FILE_ATTRIBUTES || GetFileAttributesW(exe) == INVALID_FILE_ATTRIBUTES) {
+    if (repair || GetFileAttributesW(marker) == INVALID_FILE_ATTRIBUTES || !builder_ready(exe)) {
         /* (unpacked into <tag>.part and renamed once complete: a setup stopped half way never leaves a version that looks installed) */
         home_path(install, L"%ls\\%ls.part", versions, wtag);
         rmtree(install);
@@ -834,17 +874,23 @@ static DWORD WINAPI work(LPVOID unused) {
                 w(p->from, wf, 260), w(p->to, wt, 260);
                 home_path(from, L"%ls\\%ls", dest, wf);
                 home_path(to, L"%ls\\%ls", dest, wt);
-                if (GetFileAttributesW(to) == INVALID_FILE_ATTRIBUTES && !MoveFileW(from, to))
-                    fail(L"Could not set up part %d of %d (renaming %ls).", i + 1, nparts, wf);
+                if (GetFileAttributesW(to) == INVALID_FILE_ATTRIBUTES && !move_retry(from, to)) {
+                    const DWORD e = GetLastError();
+                    if (e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION)
+                        fail(L"Could not set up part %d of %d (renaming %ls, Windows error %lu). Another program is holding the files just unpacked, "
+                             L"often an antivirus scan: run the setup again, and if it happens again allow the folder %ls in it.",
+                             i + 1, nparts, wf, e, g_home.root);
+                    fail(L"Could not set up part %d of %d (renaming %ls, Windows error %lu).", i + 1, nparts, wf, e);
+                }
             }
         }
         wchar_t staged_exe[MAX_PATH];
         home_path(staged_exe, L"%ls\\%ls", install, wrun);
         for (wchar_t *q = staged_exe; *q; q++) if (*q == L'/') *q = L'\\';
-        if (GetFileAttributesW(staged_exe) == INVALID_FILE_ATTRIBUTES)
-            fail(L"The builder is missing after unpacking (%ls). Your antivirus may have removed it: allow the folder %ls and run the setup again.", staged_exe, base);
+        if (!builder_ready(staged_exe))
+            fail(L"The Builder or its self-contained .NET runtime is incomplete after unpacking (%ls). Your antivirus may have quarantined files from %ls. Check its quarantine/history, then run the setup again. No complete installation was published.", staged_exe, install);
         if (!publish_install(install, final_dir, g_home.portable))
-            fail(L"Could not finish installing into %ls. A preserved repair backup, if restoration was blocked, is beside it as .rollback-*.", final_dir);
+            fail(L"Could not finish installing into %ls (Windows error %lu). A preserved repair backup, if restoration was blocked, is beside it as .rollback-*.", final_dir, GetLastError());
         wcscpy(install, final_dir);
         write_small(marker, tag);
         write_parts(install, parts, nparts);
@@ -912,7 +958,7 @@ static int launch_installed(const wchar_t *args) {
     MultiByteToWideChar(CP_UTF8, 0, tag, -1, wtag, 128);
     home_path(dir, L"%ls\\versions\\%ls\\HookshotBuilder", base, wtag);
     home_path(exe, L"%ls\\HookshotBuilder.exe", dir);
-    if (GetFileAttributesW(exe) == INVALID_FILE_ATTRIBUTES) return 0;
+    if (!builder_ready(exe)) return 0;
     swprintf(cmd, 4096, L"\"%ls\" %ls", exe, args);
     STARTUPINFOW si = {sizeof si};
     PROCESS_INFORMATION pi;

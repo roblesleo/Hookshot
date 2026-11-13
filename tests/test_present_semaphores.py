@@ -41,7 +41,7 @@ loss = main[loss_start:main.index('\n}', loss_start) + 2]
 acquire_loss_start = present.index('    if (res == VK_ERROR_SURFACE_LOST_KHR)')
 acquire_loss = present[acquire_loss_start:present.index('\n#ifndef _WIN32', acquire_loss_start)]
 present_loss_start = present_out.index('    if (res == VK_ERROR_SURFACE_LOST_KHR)')
-present_loss = present_out[present_loss_start:present_out.index('\n    if (res < 0', present_loss_start)]
+present_loss = present_out[present_loss_start:present_out.index('\n    present_finish(res, false);', present_loss_start)]   # (the frame log and the failure line follow, in present_finish)
 commit_start = replay.index('bool present_commit(const PendingPresent& p)')
 commit = replay[commit_start:replay.index('\n}', commit_start) + 2]
 begin = present[present.index('{') + 1:present.index('    if (src) {')]
@@ -87,6 +87,8 @@ Reflex& rx(){return cached;}
 void reflex_swapchain_created(uint64_t sc) {cached.swapchain=sc;cached.latency=cached.frame_marked=true;cached.mode=1;}
 ''' + reset + r'''
 template<class... T> void logf(const char*,T...) {}
+void present_thread_drain() {}   // (RX_VK_PRESENT_THREAD off: nothing handed over)
+std::atomic<bool> presenter_surface_lost{false};   // (and nothing found lost by it)
 int vkCreateSwapchainKHR(int,const CreateInfo* ci,void*,uint64_t* out) {
     if(ci->oldSwapchain) {
         if(!chains.count(ci->oldSwapchain) || retired.count(ci->oldSwapchain))bad_chain=true;
@@ -146,8 +148,10 @@ struct PendingPresent {
     uint32_t index;
     uint64_t swapchain, swapchain_generation;
     uint64_t reflex_frame = ~0ull;   // (NVIDIA Reflex: the frame it shows; vk_reflex.h reflex_present_frame)
+    uint64_t antilag_frame = ~0ull;  // (AMD Anti-Lag 2: the same; vk_antilag.h antilag_present_frame)
 };
 thread_local uint64_t reflex_present_frame = ~0ull;   // (vk_reflex.cpp: the frame the present shows, kept around present_out)
+thread_local uint64_t antilag_present_frame = ~0ull;  // (vk_antilag.cpp: the same for AMD Anti-Lag 2)
 PendingPresent* present_defer_into=nullptr;
 unsigned committed=0, after_acquire=0;
 bool present_out(uint32_t, std::unique_lock<std::mutex>&) {++committed; return true;}

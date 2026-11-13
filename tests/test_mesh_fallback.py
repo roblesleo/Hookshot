@@ -148,7 +148,7 @@ def main():
             "push_constants(cmd, p, nullptr, d.first_task);" not in draw or \
             "LoadWord(ctx, BufferWordAt(ctx, base, ctx.Const(1U)))" not in isbe:
         raise SystemExit("a task draw loses its direct or GPU-provided starting workgroup")
-    if "if (p.fallback && d.mesh && !fallback_record(cmd, p, d)) SKIP_HERE();" not in draw:
+    if "if (p.fallback && d.mesh && !fallback_record(cmd, p, d)) {" not in draw:
         raise SystemExit("the fallback dispatches do not run before the pass")
     if "vkCmdDrawIndirect(cmd, fallback_draw_records, 0, 1, sizeof(VkDrawIndirectCommand));" not in draw:
         raise SystemExit("the fallback is not drawn from the records' header as an indirect draw")
@@ -226,7 +226,7 @@ def main():
         raise SystemExit("the precompile leaves the mesh fallback's compute pipelines to play")
     shader = _with_cache(ROOT / "gpu" / "vk" / "vk_shader.cpp")
     if "(fallbacks && (it->second[0].kind & 4))" not in block(shader, "size_t program_cache_load_some(") or \
-            "}, all_computes, true);" not in precompile:
+            "}, plan.all, true);" not in precompile:
         raise SystemExit("the precompile loads only the mesh fallback programs play has drawn (white until compiled)")
     print("mesh shader fallback (compute records and a vertex stage) ok")
 
